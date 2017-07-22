@@ -115,7 +115,8 @@ public class Parser {
                         int port = Integer.parseInt(split[2]);
                         String host_name = split[1];
                         Kernel kernel = new Kernel();
-                        kernel.add_Neighbors(node_id,host_name,port);
+                        if(node_id != selfId)
+                        	kernel.add_Neighbors(node_id,host_name,port);
                         
                         
                     } catch (NoSuchElementException e) {
