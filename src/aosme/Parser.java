@@ -81,7 +81,7 @@ public class Parser {
         return false;
     }
 
-    public static int parseChildCount(String configPath, int selfId) throws IOException {
+    public static int parseChildCount(String configPath, int selfId,int myParent) throws IOException {
         int childCount = 0;
         Scanner parser = null;
         try {
@@ -90,12 +90,22 @@ public class Parser {
             errExit("Configuration file not found.");
         }
         boolean globalsDone = false;
+        /*
+         * Added variables for neighbor class
+         */
+        int count = 0;
+        int node_id=0,parent=0,port=0;
+        String host_name = null;
+        
         while (parser.hasNextLine()) {
             String line = parser.nextLine();
             Scanner lineParser = new Scanner(line);
             String[] tokens = new String[4];
             try {
+            	
                 tokens[0] = lineParser.next();
+                if(count > 0)
+                	node_id = Integer.parseInt(tokens[0]);
             } catch (NoSuchElementException e) {
                 lineParser.close();
                 continue;
@@ -110,19 +120,31 @@ public class Parser {
                         /**
                          * Calling add_Neighbors method to add all neighbor information in Kernel Class
                          */
-                        String split[] = tokens[i].split("\\s+");
-                        int node_id = Integer.parseInt(split[0]);
-                        int port = Integer.parseInt(split[2]);
-                        String host_name = split[1];
-                        Kernel kernel = new Kernel();
-                        if(node_id != selfId)
-                        	kernel.add_Neighbors(node_id,host_name,port);
+                        if(count > 0){
+                        	if(i == 1)
+                        		host_name = tokens[i];
+                        	if(i == 2)
+                        		port = Integer.parseInt(tokens[i]);
+                        	if(i == 3)
+                        		parent = Integer.parseInt(tokens[i]);
+                        }
+                   
                         
                         
                     } catch (NoSuchElementException e) {
                         errExit("Configuration file has bad format.");
-                    }
+                    }                                      
                 }
+              
+                
+                if(count > 0){
+                	if((node_id != selfId) && (parent == selfId)){
+                    	Neighbor.add_Neighbors(node_id,host_name,port);
+                	}
+                	if(node_id == myParent && myParent != selfId)
+                		Neighbor.add_Neighbors(myParent, host_name, port);
+                }
+                count++;
                 
                 int[] vals = new int[4];
                 for (int i = 0; i < 4; i++) {
@@ -157,6 +179,7 @@ public class Parser {
                     }
                 }
             }
+           
             lineParser.close();
         }
         parser.close();

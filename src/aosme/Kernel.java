@@ -20,6 +20,7 @@ import java.util.Queue;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 import com.sun.nio.sctp.MessageInfo;
 import com.sun.nio.sctp.SctpChannel;
@@ -33,7 +34,7 @@ public class Kernel {
 	
 	Object connection_lock; // lock on connect before allowing client channels to send messages
 	boolean has_token = false;
-	int port,num_nodes,node_id,parent = -1;
+	private int port,num_nodes,node_id,parent = -1;
 	
 	String file = "/home/012/s/sx/sxn164530/aosme/"+node_id+".txt";
 	String token_content,time_stamp;
@@ -43,9 +44,9 @@ public class Kernel {
 	
 	Selector channel_selector;
 	
-	HashSet<Neighbor> neighbors;
+	static HashSet<Neighbor> neighbors = new HashSet<>();
 	HashMap<Integer,Neighbor> neighbor_Map;
-	Queue<Integer> request_queue;
+	Queue<Integer> request_queue; //Store all incoming requests in this queue
 	
 	
 	Logger logger,critical_section_logger;
@@ -55,14 +56,18 @@ public class Kernel {
 	/*
 	 *  Constructor to initialize all related objects
 	 */
-	public Kernel() throws IOException{
+	public Kernel(int node_id,int port,int parent,int num_nodes) throws IOException{
+		
+		this.node_id = node_id;
+		this.port = port;
+		this.parent = parent;
+		this.num_nodes = num_nodes;
 		
 		connection_lock = new Object();
-		neighbors = new HashSet<>();
 		request_queue = new LinkedList<>();
-		
-		input_reader = new BufferedReader(new FileReader(file));
-		output_writer = new BufferedWriter(new FileWriter(file));
+		channel_selector = Selector.open();
+		//input_reader = new BufferedReader(new FileReader(file));
+		//output_writer = new BufferedWriter(new FileWriter(file));
 		
 		if(node_id == 0)
 			has_token = true;
@@ -74,6 +79,10 @@ public class Kernel {
 		regular_file = new FileHandler("/home/012/s/sx/sxn164530/aosme/Logs/logs"+node_id+".log");
 		critical_section_file = new FileHandler("/home/012/s/sx/sxn164530/aosme/Logs/Critical/logs"+node_id+".log");
 		
+		SimpleFormatter formatter = new SimpleFormatter();
+		regular_file.setFormatter(formatter);
+		critical_section_file.setFormatter(formatter);
+		
 		logger = Logger.getLogger("Regular_Log");
 		logger.setLevel(Level.INFO);
 		logger.addHandler(regular_file);
@@ -82,14 +91,25 @@ public class Kernel {
 		critical_section_logger.setLevel(Level.INFO);
 		critical_section_logger.addHandler(critical_section_file);
 		
+		logger.info("My node_id"+node_id);
+		logger.info("My port"+port);
+		logger.info("My parent"+parent);
+		
 	}
-	
 	/**
 	 * Neighbor (inner)class to store all neighbor node information
 	 */
+	public int get_node_id(){
+		return node_id;
+	}
+	public int get_num_nodes(){
+		return num_nodes;
+	}
+	public HashSet get_Neighbors(){
+		return neighbors;
+	}
 	
-	class Neighbor{
-		
+	public static class Neighbor{
 		
 		SctpChannel client_channel;
 		SctpServerChannel server_Channel;
@@ -100,14 +120,13 @@ public class Kernel {
 			
 			this.node_id = node_id;
 			serverAddress = new InetSocketAddress(InetAddress.getByName(host_name),port);
-			
-		}
-	}
-	
-	public void add_Neighbors(int node_id,String host_name,int port) throws UnknownHostException{
 		
-		Neighbor neighbor = new Neighbor(node_id,host_name,port);
-		neighbors.add(neighbor);
+		}
+		public static void add_Neighbors(int node_id,String host_name,int port) throws UnknownHostException{
+			
+			Neighbor neighbor = new Neighbor(node_id,host_name,port);
+			neighbors.add(neighbor);
+		}
 	}
 	
 	/*
@@ -129,6 +148,7 @@ public class Kernel {
 				 }
 			}
 		}
+		logger.info("ALL connections done releasing lock");
 		synchronized(connection_lock){
 			connection_lock.notify();
 		}
@@ -149,7 +169,6 @@ public class Kernel {
 			logger.info("Connection established");
 			i++;
 		}	
-		
 	}
 	public void csEnter(){
 		
@@ -184,17 +203,21 @@ public class Kernel {
 		}
 		return true;
 	}
+	
 	public void send_first_request() throws InterruptedException, IOException {
 		
+		logger.info("Waiting to send first request");
 		synchronized (connection_lock){
 			connection_lock.wait();
-			
+			logger.info("Wait over now going to send requests");
+			/*
 			if(has_token == false){
 				check_for_application_request();
 				send_messages("Request");
 				IncomingChannelReader reader = new IncomingChannelReader();
-				reader.receiveMessages();
+				//reader.receiveMessages();
 			}
+			*/
 		}
 	}
 	
@@ -222,16 +245,18 @@ public class Kernel {
 	
 	public static void main(String args[]) throws InterruptedException, IOException{
 		
-		String config_PATH = args[4];
 		
-		Kernel kernel = new Kernel();
-		kernel.node_id = Integer.parseInt(args[0]);
+		int node_id = Integer.parseInt(args[0]);
 		//args[1] is host name
-		kernel.port = Integer.parseInt(args[2]);
-		kernel.parent = Integer.parseInt(args[3]);
+		int port = Integer.parseInt(args[2]);
+		int parent = Integer.parseInt(args[3]);
+		String config_PATH = args[4];
+		int num_nodes = Integer.parseInt(args[5]);
 		
-		Parser.startsWithToken(config_PATH, kernel.node_id);
-		Parser.parseChildCount(config_PATH, kernel.node_id);
+		Kernel kernel = new Kernel(node_id,port,parent,num_nodes);
+		
+		Parser.startsWithToken(config_PATH, node_id);
+		Parser.parseChildCount(config_PATH, node_id,parent);
 		
 		/**
 		 * Thread to run the server first and then call a method open connections to 
@@ -242,21 +267,37 @@ public class Kernel {
 			@Override
 			public void run() {
 				try {
+					
 					kernel.start_server();
+					
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
+				// Initiate the first request message	
 				try {
-					kernel.open_all_connections();
+					
+					kernel.send_first_request();
+					
 				} catch (InterruptedException e) {
 					e.printStackTrace();
-				}
+				} catch (IOException e) {
+					e.printStackTrace();
+				} 
 				
 			}
 		});
 		connection_thread.start();  // Start the thread to call the above run function from the anonymous class
 
-		kernel.send_first_request(); // Initiate the first request message	
+		try {
+			kernel.open_all_connections();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		kernel.logger.info("My neighbors");
+		for(Neighbor neighbor:kernel.neighbors){
+			kernel.logger.info(Integer.toString(neighbor.node_id));
+		}
+		
 	}
 
 }
