@@ -76,8 +76,8 @@ public class Kernel {
 		 * Start all loggers
 		 */
 		
-		regular_file = new FileHandler("/home/012/s/sx/sxn164530/aosme/Logs/logs"+node_id+".log");
-		critical_section_file = new FileHandler("/home/012/s/sx/sxn164530/aosme/Logs/Critical/logs"+node_id+".log");
+		regular_file = new FileHandler(System.getProperty("user.home")+"/aosme/Logs/"+node_id+".log");
+		critical_section_file = new FileHandler(System.getProperty("user.home")+"/aosme/Logs/Critical/"+node_id+".log");
 		
 		SimpleFormatter formatter = new SimpleFormatter();
 		regular_file.setFormatter(formatter);

@@ -1,0 +1,7 @@
+1.Create folder aosme in HOME
+2. Inside aosme create folder Logs
+3. Inside logs create folder Critical 
+4. create a config file (name it as config or whatever)
+5. run launcher script as ./launcher config
+6. run cleanup script as ./cleanup config
+ 
