@@ -9,6 +9,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
@@ -179,15 +180,57 @@ public class Kernel {
 			i++;
 		}	
 	}
-	public void csEnter(){
-		
-		critical_section_logger.info(time_stamp);
-		
-		
+	
+	// Function called within the kernel to grant permission to the application
+	private void csGrant() throws IOException{
+        String home = System.getProperty("user.home");
+        Path k2a = Paths.get(home, "aosme", "Kern" + node_id + "ToApp" + node_id + ".cnl");
+        OutputStream toApp = Files.newOutputStream(k2a, StandardOpenOption.APPEND,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+		critical_section_logger.info("Granting request. Timestamp: " + time_stamp);
+		toApp.write(MessageType.CSGRANT.toCode());
+		toApp.flush();
+		toApp.close();
 	}
-	public void csExit(){
-		
+	
+	// Interface to apps to enter the critical section. ID of the app is used
+	// to determine what file (channel) to access the kernel with.
+	public static void csEnter(int id) throws Exception {
+        String home = System.getProperty("user.home");
+        Path a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
+        Path k2a = Paths.get(home, "aosme", "Kern" + id + "ToApp" + id + ".cnl");
+        OutputStream toKern = Files.newOutputStream(a2k, StandardOpenOption.APPEND,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        InputStream fromKern = Files.newInputStream(k2a, StandardOpenOption.CREATE,
+                StandardOpenOption.READ);
+        toKern.write(MessageType.CSREQUEST.toCode());
+        toKern.flush();
+        toKern.close();
+        int code = fromKern.read(); // blocks until input
+        fromKern.close();
+        Files.deleteIfExists(k2a);
+        if (code == -1)
+            throw new IOException("Encountered EOS while reading from kernel.");
+        MessageType mt = MessageType.fromCode((byte) code);
+        if (mt == MessageType.CSGRANT) {
+            return;
+        } else {
+            throw new IOException("Encountered unexpected message type from kernel.");
+        }
 	}
+	
+	// Interface to apps to exit the critical section.
+	public static void csExit(int id) throws IOException {
+        String home = System.getProperty("user.home");
+        Path a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
+        OutputStream toKern = Files.newOutputStream(a2k, StandardOpenOption.APPEND,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        toKern.write(MessageType.CSRETURN.toCode());
+        toKern.flush();
+        toKern.close();
+	}
+	
+	
 	public boolean check_for_application_request() throws IOException, InterruptedException{
 		
 		boolean flag = false;
@@ -196,7 +239,7 @@ public class Kernel {
 				if(input_reader.readLine() != null){
 					flag = true;
 					if( (has_token) && (request_queue.isEmpty())){
-						csEnter();
+						csGrant();
 					}
 					else if (!has_token && request_queue.isEmpty()){
 						request_queue.add(node_id);
@@ -211,23 +254,6 @@ public class Kernel {
 			}
 		}
 		return true;
-	}
-	
-	public void send_first_request() throws InterruptedException, IOException {
-		
-		logger.info("Waiting to send first request");
-		synchronized (connection_lock){
-			connection_lock.wait();
-			logger.info("Wait over now going to send requests");
-			/*
-			if(has_token == false){
-				check_for_application_request();
-				send_messages("Request");
-				IncomingChannelReader reader = new IncomingChannelReader();
-				//reader.receiveMessages();
-			}
-			*/
-		}
 	}
 	
 	public String bytes_to_string(ByteBuffer buffer){
@@ -270,6 +296,7 @@ public class Kernel {
 		Pipe p = Pipe.open();
 		kernel.new FileListener(p.sink(), node_id).start();
 		kernel.pipein = p.source();
+		kernel.pipein.register(kernel.channel_selector, SelectionKey.OP_READ);
 		
 		/**
 		 * Thread to run the server first and then call a method open connections to 
@@ -286,16 +313,6 @@ public class Kernel {
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
-				// Initiate the first request message	
-				try {
-					
-					kernel.send_first_request();
-					
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				} catch (IOException e) {
-					e.printStackTrace();
-				} 
 				
 			}
 		});
