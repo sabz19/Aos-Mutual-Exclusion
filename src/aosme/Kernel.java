@@ -3,16 +3,23 @@ package aosme;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.channels.Pipe;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -51,6 +58,8 @@ public class Kernel {
 	
 	Logger logger,critical_section_logger;
 	FileHandler regular_file,critical_section_file;
+	
+	private Pipe.SourceChannel pipein;
 	
 	
 	/*
@@ -258,6 +267,10 @@ public class Kernel {
 		Parser.startsWithToken(config_PATH, node_id);
 		Parser.parseChildCount(config_PATH, node_id,parent);
 		
+		Pipe p = Pipe.open();
+		kernel.new FileListener(p.sink(), node_id).start();
+		kernel.pipein = p.source();
+		
 		/**
 		 * Thread to run the server first and then call a method open connections to 
 		 * connect all the client channels of neighbors to their respective server channel
@@ -298,6 +311,59 @@ public class Kernel {
 			kernel.logger.info(Integer.toString(neighbor.node_id));
 		}
 		
+	}
+	
+	// This thread type's only purpose is to monitor the input file from the application
+	// and write anything it gets to the pipe to the kernel. This allows the kernel to
+	// use a Selector that can listen to both the network connections and the
+	// application.
+	private class FileListener extends Thread {
+	    private final Pipe.SinkChannel out;
+	    private final int id;
+
+	    FileListener(Pipe.SinkChannel out, int id) {
+	        this.out = out;
+	        this.id = id;
+	    }
+
+	    @Override
+	    public void run() {
+	        String home = System.getProperty("user.home");
+
+	        // ex. ~/aosme/App1ToKern1.cnl
+	        Path fpath = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
+	        InputStream in = null;
+            try {
+                in = Files.newInputStream(fpath,
+                        StandardOpenOption.READ,    // open for reading
+                        StandardOpenOption.CREATE,  // create iff it doesn't exist
+                        // delete on close (may not work properly here since never closed; TODO?)
+                        StandardOpenOption.DELETE_ON_CLOSE);
+            } catch (IOException e) {
+                // TODO: Might need to pass a reference to the logger. Are these messages visible?
+                System.err.println("Input channel from app could not be opened.");
+                System.exit(1);
+            }
+            byte[] buf = new byte[20];
+            // for now this just runs indefinitely until the process is killed (by main or something else)
+	        while (true) {
+	            int numRead = 0;
+                try {
+                    numRead = in.read(buf);
+                } catch (IOException e) {
+                    System.err.println("Could not read from app channel!");
+                    System.exit(1);
+                }
+                ByteBuffer bbuf = ByteBuffer.wrap(buf, 0, numRead);
+                bbuf.flip(); // constrains the buffer to what was read, making it ready to be written; not a literal flip
+                try {
+                    out.write(bbuf);
+                } catch (IOException e) {
+                    System.err.println("Could not write to kernel's pipe!");
+                    System.exit(1);
+                }
+	        }
+	    }
 	}
 
 }
