@@ -257,7 +257,7 @@ public class Kernel {
         toKern.close();
     }
 	
-	public void send_message(ByteBuffer message, int nbr_id){
+	public void send_buffer(ByteBuffer message, int nbr_id){
 		
 		logger.info("Sending "+message+" message to"+" "+nbr_id);
 		logger.info("message is " + message.asCharBuffer().toString());
@@ -267,6 +267,30 @@ public class Kernel {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+	
+	public void send_request() {
+        ByteBuffer mbuf = ByteBuffer.allocate(1);
+        mbuf.put(MessageType.REQUEST.code);
+        mbuf.flip();
+        send_buffer(mbuf, parent);
+	}
+	
+	public void send_token(int nbr_id) {
+	    ByteBuffer mbuf = ByteBuffer.allocate(5);
+        mbuf.put(MessageType.TOKEN.code);
+        mbuf.putInt(token_ts);
+        mbuf.flip();
+        send_buffer(mbuf, nbr_id);
+        parent = nbr_id;
+	}
+	
+	public void send_node_done(int finished_id, int nbr_id) {
+        ByteBuffer mbuf = ByteBuffer.allocate(2);
+        mbuf.put(MessageType.NODEDONE.code);
+        mbuf.put( (byte) finished_id);
+        mbuf.flip();
+        send_buffer(mbuf, nbr_id);
 	}
 	
 	
@@ -368,10 +392,7 @@ public class Kernel {
                         throw new Exception("Had token, app was not using it, but queue was nonempty.");
                     } else if (!hasToken() && request_queue.isEmpty()) {
                         request_queue.add(node_id);
-                        ByteBuffer mbuf = ByteBuffer.allocate(1);
-                        mbuf.put(MessageType.REQUEST.code);
-                        mbuf.flip();
-                        send_message(mbuf, parent);
+                        send_request();
                     } else if (!hasToken() && !request_queue.isEmpty()) {
                         request_queue.add(node_id);
                     }
@@ -386,13 +407,8 @@ public class Kernel {
                 } else if (mt == MessageType.APPDONE) {
                     done = true;
                     key.cancel();
-                    ByteBuffer mbuf = ByteBuffer.allocate(2);
                     for (Neighbor nbr : neighbors) {
-                        mbuf.put(MessageType.NODEDONE.code);
-                        mbuf.put( (byte) node_id);
-                        mbuf.flip();
-                        send_message(mbuf, nbr.node_id);
-                        mbuf.clear();
+                        send_node_done(node_id, nbr.node_id);
                     }
                 } else {
                     throw new Exception("Unexpected message type from app.");
@@ -408,16 +424,9 @@ public class Kernel {
 	    } else {
 	        int dest_id = request_queue.remove();
 	        if (dest_id != node_id) {
-	            ByteBuffer mbuf = ByteBuffer.allocate(5);
-	            mbuf.put(MessageType.TOKEN.code);
-	            mbuf.putInt(token_ts);
-	            mbuf.flip();
-	            send_message(mbuf, dest_id);
+	            send_token(dest_id);
 	            if (!request_queue.isEmpty()) {
-	                mbuf.clear();
-	                mbuf.put(MessageType.REQUEST.code);
-	                mbuf.flip();
-	                send_message(mbuf, dest_id);
+	                send_request();
 	            }
 	        } else {
 	            csGrant();
