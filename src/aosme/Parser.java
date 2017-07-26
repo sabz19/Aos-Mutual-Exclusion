@@ -138,9 +138,11 @@ public class Parser {
               
                 
                 if(count > 0){
+                    // if the node's id is not mine and its parent is me
                 	if((node_id != selfId) && (parent == selfId)){
                     	Neighbor.add_Neighbors(node_id,host_name,port);
                 	}
+                	// if the node's id is my parent and i am not my own parent
                 	if(node_id == myParent && myParent != selfId)
                 		Neighbor.add_Neighbors(myParent, host_name, port);
                 }

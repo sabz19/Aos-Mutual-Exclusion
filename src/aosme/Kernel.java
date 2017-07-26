@@ -15,6 +15,7 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.Pipe;
+import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.file.Files;
@@ -25,6 +26,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.Set;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -41,10 +43,11 @@ public class Kernel {
 	
 	
 	Object connection_lock; // lock on connect before allowing client channels to send messages
-	boolean has_token = false;
 	private int port,num_nodes,node_id,parent = -1;
+	boolean greedy;
+	boolean done;
 	
-	String file = "/home/012/s/sx/sxn164530/aosme/"+node_id+".txt";
+	String file = System.getProperty("user.home") + "/aosme/"+node_id+".txt";
 	String token_content,time_stamp;
 	
 	BufferedReader input_reader;
@@ -53,7 +56,7 @@ public class Kernel {
 	Selector channel_selector;
 	
 	static HashSet<Neighbor> neighbors = new HashSet<>();
-	HashMap<Integer,Neighbor> neighbor_Map;
+	static HashMap<Integer,Neighbor> neighbor_Map = new HashMap<>();
 	Queue<Integer> request_queue; //Store all incoming requests in this queue
 	
 	
@@ -72,15 +75,13 @@ public class Kernel {
 		this.port = port;
 		this.parent = parent;
 		this.num_nodes = num_nodes;
+		done = false;
 		
 		connection_lock = new Object();
 		request_queue = new LinkedList<>();
 		channel_selector = Selector.open();
 		//input_reader = new BufferedReader(new FileReader(file));
 		//output_writer = new BufferedWriter(new FileWriter(file));
-		
-		if(node_id == 0)
-			has_token = true;
 		
 		/*
 		 * Start all loggers
@@ -125,17 +126,20 @@ public class Kernel {
 		SctpServerChannel server_Channel;
 		InetSocketAddress serverAddress;
 		int node_id;
+		boolean done;
 		
 		public Neighbor(int node_id,String host_name,int port) throws UnknownHostException{
 			
 			this.node_id = node_id;
 			serverAddress = new InetSocketAddress(InetAddress.getByName(host_name),port);
-		
+			done = false;
+			
 		}
 		public static void add_Neighbors(int node_id,String host_name,int port) throws UnknownHostException{
 			
 			Neighbor neighbor = new Neighbor(node_id,host_name,port);
 			neighbors.add(neighbor);
+			neighbor_Map.put(node_id, neighbor);
 		}
 	}
 	
@@ -181,6 +185,13 @@ public class Kernel {
 		}	
 	}
 	
+	private boolean hasToken() {
+	    if (parent == node_id)
+	        return true;
+	    else
+	        return false;
+	}
+	
 	// Function called within the kernel to grant permission to the application
 	private void csGrant() throws IOException{
         String home = System.getProperty("user.home");
@@ -218,9 +229,9 @@ public class Kernel {
             throw new IOException("Encountered unexpected message type from kernel.");
         }
 	}
-	
-	// Interface to apps to exit the critical section.
-	public static void csExit(int id) throws IOException {
+    
+    // Interface to apps to exit the critical section.
+    public static void csExit(int id) throws IOException {
         String home = System.getProperty("user.home");
         Path a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
         OutputStream toKern = Files.newOutputStream(a2k, StandardOpenOption.APPEND,
@@ -228,57 +239,33 @@ public class Kernel {
         toKern.write(MessageType.CSRETURN.toCode());
         toKern.flush();
         toKern.close();
-	}
+    }
+    
+    // Interface to apps to notify the kernel of app completion.
+    public static void appDone(int id) throws IOException {
+        String home = System.getProperty("user.home");
+        Path a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
+        OutputStream toKern = Files.newOutputStream(a2k, StandardOpenOption.APPEND,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        toKern.write(MessageType.APPDONE.toCode());
+        toKern.flush();
+        toKern.close();
+    }
 	
-	
-	public boolean check_for_application_request() throws IOException, InterruptedException{
+	public void send_message(ByteBuffer message){
 		
-		boolean flag = false;
-		while(!flag){
-			try{
-				if(input_reader.readLine() != null){
-					flag = true;
-					if( (has_token) && (request_queue.isEmpty())){
-						csGrant();
-					}
-					else if (!has_token && request_queue.isEmpty()){
-						request_queue.add(node_id);
-						send_messages("Request");
-					}
-					else
-						request_queue.add(node_id);
-						
-				}
-			}catch(Exception e){
-				Thread.sleep(0);
-			}
-		}
-		return true;
-	}
-	
-	public String bytes_to_string(ByteBuffer buffer){
-		
-		String string = new String(buffer.array());
-		return string;
-	}
-	
-	public void send_messages(String message){
-		
-		ByteBuffer sbuf = ByteBuffer.allocate(60);
-		logger.info("Sending"+message+"message to"+" "+parent);
-		logger.info("message is " + message);
-		sbuf.put(message.getBytes());
-		sbuf.flip();
+		logger.info("Sending "+message+" message to"+" "+parent);
+		logger.info("message is " + message.asCharBuffer().toString());
 		MessageInfo messageInfo = MessageInfo.createOutgoing(null,0);	
 		try {
-			neighbor_Map.get(parent).client_channel.send(sbuf, messageInfo);
+			neighbor_Map.get(parent).client_channel.send(message, messageInfo);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
 	
 	
-	public static void main(String args[]) throws InterruptedException, IOException{
+	public static void main(String args[]) throws Exception{
 		
 		
 		int node_id = Integer.parseInt(args[0]);
@@ -296,6 +283,7 @@ public class Kernel {
 		Pipe p = Pipe.open();
 		kernel.new FileListener(p.sink(), node_id).start();
 		kernel.pipein = p.source();
+		kernel.pipein.configureBlocking(false);
 		kernel.pipein.register(kernel.channel_selector, SelectionKey.OP_READ);
 		
 		/**
@@ -328,6 +316,67 @@ public class Kernel {
 			kernel.logger.info(Integer.toString(neighbor.node_id));
 		}
 		
+		kernel.mainLoop();
+	}
+	
+	private void mainLoop() throws Exception {
+	    while (!allNodesDone()) {
+	        channel_selector.select();
+	        Set<SelectionKey> keys = channel_selector.selectedKeys();
+	        for (SelectionKey key : keys) {
+	            SelectableChannel ac = key.channel();
+	            if (ac instanceof Pipe.SourceChannel) {
+	                handleApp( (Pipe.SourceChannel) ac, key);
+	            } else if (ac instanceof SctpChannel) {
+	                
+	            } else {
+	                throw new Exception("Unexpected channel type in mainLoop().");
+	            }
+	        }
+	        keys.clear();
+	    }
+	}
+	
+	private void handleApp(Pipe.SourceChannel sc, SelectionKey key) throws Exception {
+        ByteBuffer buf = ByteBuffer.allocate(2);
+        int num_read = sc.read(buf);
+        if (num_read == 0) {
+            logger.info("Had an empty app stream read.");
+            return;
+        } else if (num_read == -1) {
+            if (done == false) {
+                throw new Exception("App stream ended without being done.");
+            } else {
+                key.cancel(); // stream ended and we were done, no need to monitor further
+            }
+        } else {
+            if (done == true) {
+                throw new Exception("Received message from app that was finished.");
+            }
+            while (buf.hasRemaining()) {
+                byte code = buf.get();
+                MessageType mt = MessageType.fromCode(code);
+                if (mt == MessageType.CSREQUEST) {
+                    
+                } else if (mt == MessageType.CSRETURN) {
+                    
+                } else if (mt == MessageType.APPDONE) {
+                    
+                } else {
+                    throw new Exception("Unexpected message type from app.");
+                }
+            }
+        }
+	}
+	
+	private boolean allNodesDone() {
+	    if (done == false)
+	        return false;
+	    for (Neighbor n : neighbors) {
+	        if (n.done == false)
+	            return false;
+	    }
+	    return true;
 	}
 	
 	// This thread type's only purpose is to monitor the input file from the application

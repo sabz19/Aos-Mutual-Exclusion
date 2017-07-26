@@ -1,11 +1,13 @@
 package aosme;
 
 public enum MessageType {
-    REQUEST ( (byte) 0),    // size: 1 byte:  REQUEST
-    TOKEN   ( (byte) 1),    // size: 5 bytes: TOKEN, timestamp (int)
+    REQUEST   ( (byte) 0),  // size: 1 byte:  REQUEST
+    TOKEN     ( (byte) 1),  // size: 5 bytes: TOKEN, timestamp (int)
     CSREQUEST ( (byte) 2),  // size: 1 byte:  CSREQUEST
-    CSGRANT ( (byte) 3),    // size: 1 byte:  CSGRANT
-    CSRETURN  ( (byte) 4);  // size: 1 byte:  CSRETURN
+    CSGRANT   ( (byte) 3),  // size: 1 byte:  CSGRANT
+    CSRETURN  ( (byte) 4),  // size: 1 byte:  CSRETURN
+    APPDONE   ( (byte) 5),  // size: 1 byte:  APPDONE
+    NODEDONE  ( (byte) 6);  // size: 2 bytes: NODEDONE, id (byte)
     
     byte code;
     
@@ -24,6 +26,8 @@ public enum MessageType {
             case 2:  return CSREQUEST;
             case 3:  return CSGRANT;
             case 4:  return CSRETURN;
+            case 5:  return APPDONE;
+            case 6:  return NODEDONE;
             default: throw new Exception("Bad MessageType code value.");
         }
     }

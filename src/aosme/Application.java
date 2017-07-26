@@ -22,6 +22,8 @@ public class Application {
                 TimeUnit.MILLISECONDS.sleep((long) generatenumber(meanIRD));
             }
             
+            Kernel.appDone(id);
+            
         }catch (Exception e){
             e.printStackTrace();
         }
