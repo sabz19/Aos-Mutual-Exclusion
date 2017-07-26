@@ -39,4 +39,14 @@ public class Application {
         double lambda = 1.0/mean;
         return Math.log(1-x)/(-lambda);
     }
+    
+    public static void main(String args[]){
+        
+        int node_id = Integer.parseInt(args[0]);
+        int meanIRD = Integer.parseInt(args[1]);
+        int meanCSET = Integer.parseInt(args[2]);
+        int requestnumber = Integer.parseInt(args[3]);
+        
+        Application app = new Application(node_id, meanIRD, meanCSET, requestnumber);
+    }
 }
