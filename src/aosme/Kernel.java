@@ -48,7 +48,8 @@ public class Kernel {
 	boolean done;
 	
 	String file = System.getProperty("user.home") + "/aosme/"+node_id+".txt";
-	String token_content,time_stamp;
+	int token_ts;
+	boolean token_in_use;
 	
 	BufferedReader input_reader;
 	BufferedWriter output_writer;
@@ -82,6 +83,9 @@ public class Kernel {
 		channel_selector = Selector.open();
 		//input_reader = new BufferedReader(new FileReader(file));
 		//output_writer = new BufferedWriter(new FileWriter(file));
+		
+		token_ts = 0;
+		token_in_use = false;
 		
 		/*
 		 * Start all loggers
@@ -198,7 +202,8 @@ public class Kernel {
         Path k2a = Paths.get(home, "aosme", "Kern" + node_id + "ToApp" + node_id + ".cnl");
         OutputStream toApp = Files.newOutputStream(k2a, StandardOpenOption.APPEND,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-		critical_section_logger.info("Granting request. Timestamp: " + time_stamp);
+		critical_section_logger.info("Granting request. Timestamp: " + token_ts);
+		token_in_use = true;
 		toApp.write(MessageType.CSGRANT.toCode());
 		toApp.flush();
 		toApp.close();
@@ -252,13 +257,13 @@ public class Kernel {
         toKern.close();
     }
 	
-	public void send_message(ByteBuffer message){
+	public void send_message(ByteBuffer message, int nbr_id){
 		
-		logger.info("Sending "+message+" message to"+" "+parent);
+		logger.info("Sending "+message+" message to"+" "+nbr_id);
 		logger.info("message is " + message.asCharBuffer().toString());
 		MessageInfo messageInfo = MessageInfo.createOutgoing(null,0);	
 		try {
-			neighbor_Map.get(parent).client_channel.send(message, messageInfo);
+			neighbor_Map.get(nbr_id).client_channel.send(message, messageInfo);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -357,16 +362,67 @@ public class Kernel {
                 byte code = buf.get();
                 MessageType mt = MessageType.fromCode(code);
                 if (mt == MessageType.CSREQUEST) {
-                    
+                    if (hasToken() && request_queue.isEmpty()) {
+                        csGrant();
+                    } else if (hasToken() && !request_queue.isEmpty()) {
+                        throw new Exception("Had token, app was not using it, but queue was nonempty.");
+                    } else if (!hasToken() && request_queue.isEmpty()) {
+                        request_queue.add(node_id);
+                        ByteBuffer mbuf = ByteBuffer.allocate(1);
+                        mbuf.put(MessageType.REQUEST.code);
+                        mbuf.flip();
+                        send_message(mbuf, parent);
+                    } else if (!hasToken() && !request_queue.isEmpty()) {
+                        request_queue.add(node_id);
+                    }
                 } else if (mt == MessageType.CSRETURN) {
-                    
+                    token_in_use = false;
+                    if (!hasToken()) {
+                        throw new Exception("App was in critical section while kernel did not have the token!");
+                    }
+                    if (!request_queue.isEmpty()) {
+                        handleTokenGain();
+                    }
                 } else if (mt == MessageType.APPDONE) {
-                    
+                    done = true;
+                    key.cancel();
+                    ByteBuffer mbuf = ByteBuffer.allocate(2);
+                    for (Neighbor nbr : neighbors) {
+                        mbuf.put(MessageType.NODEDONE.code);
+                        mbuf.put( (byte) node_id);
+                        mbuf.flip();
+                        send_message(mbuf, nbr.node_id);
+                        mbuf.clear();
+                    }
                 } else {
                     throw new Exception("Unexpected message type from app.");
                 }
             }
         }
+	}
+	
+	private void handleTokenGain() throws IOException {
+	    if (greedy == true && request_queue.contains(node_id)) {
+	        request_queue.remove(node_id);
+	        csGrant();
+	    } else {
+	        int dest_id = request_queue.remove();
+	        if (dest_id != node_id) {
+	            ByteBuffer mbuf = ByteBuffer.allocate(5);
+	            mbuf.put(MessageType.TOKEN.code);
+	            mbuf.putInt(token_ts);
+	            mbuf.flip();
+	            send_message(mbuf, dest_id);
+	            if (!request_queue.isEmpty()) {
+	                mbuf.clear();
+	                mbuf.put(MessageType.REQUEST.code);
+	                mbuf.flip();
+	                send_message(mbuf, dest_id);
+	            }
+	        } else {
+	            csGrant();
+	        }
+	    }
 	}
 	
 	private boolean allNodesDone() {
