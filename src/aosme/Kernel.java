@@ -357,7 +357,7 @@ public class Kernel {
 	            if (ac instanceof Pipe.SourceChannel) {
 	                handleApp( (Pipe.SourceChannel) ac, key);
 	            } else if (ac instanceof SctpChannel) {
-	                
+	                handleNbr( (SctpChannel) ac, key);
 	            } else {
 	                throw new Exception("Unexpected channel type in mainLoop().");
 	            }
@@ -415,6 +415,22 @@ public class Kernel {
                 }
             }
         }
+	}
+	
+	private void handleNbr(SctpChannel sc, SelectionKey key) throws Exception {
+	    ByteBuffer buf = ByteBuffer.allocate(5);
+	    sc.receive(buf, null, null);
+	    byte code = buf.get();
+	    MessageType mt = MessageType.fromCode(code);
+	    if (mt == MessageType.REQUEST) {
+	        // TODO
+	    } else if (mt == MessageType.TOKEN) {
+	        // TODO
+	    } else if (mt == MessageType.NODEDONE) {
+	        // TODO
+	    } else {
+	        throw new Exception("Unexpected message type from neighbor.");
+	    }
 	}
 	
 	private void handleTokenGain() throws IOException {
