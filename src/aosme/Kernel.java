@@ -151,7 +151,7 @@ public class Kernel {
 	 * Connect to all open neighbor servers
 	 */
 	
-	public void open_all_connections() throws InterruptedException{
+	public void open_all_connections() throws InterruptedException, IOException{
 		
 		for(Neighbor neighbor:neighbors){
 			boolean connection_established = false;
@@ -160,10 +160,15 @@ public class Kernel {
 					
 					neighbor.client_channel = SctpChannel.open();
 					neighbor.client_channel.connect(neighbor.serverAddress);
-					connection_established = true;
 				} catch (IOException e) {
 					Thread.sleep(2000);
 				 }
+                ByteBuffer b = ByteBuffer.allocate(1);
+                b.put( (byte) node_id);
+                b.flip();
+                MessageInfo mi = MessageInfo.createOutgoing(null,0);   
+                neighbor.client_channel.send(b, mi); // send id
+                connection_established = true;
 			}
 		}
 		logger.info("ALL connections done releasing lock");
@@ -182,8 +187,11 @@ public class Kernel {
 		while(i < neighbors.size()){	
 			
 			SctpChannel serverChannel = server.accept();
+            ByteBuffer b = ByteBuffer.allocate(1);
+            serverChannel.receive(b, null, null); // receive id
 			serverChannel.configureBlocking(false);
-			serverChannel.register(channel_selector, SelectionKey.OP_READ);
+			// attach neighbor info to the channel's key
+			serverChannel.register(channel_selector, SelectionKey.OP_READ, neighbor_Map.get(b.get(0)));
 			logger.info("Connection established");
 			i++;
 		}	
@@ -398,6 +406,7 @@ public class Kernel {
                     }
                 } else if (mt == MessageType.CSRETURN) {
                     token_in_use = false;
+                    token_ts++;
                     if (!hasToken()) {
                         throw new Exception("App was in critical section while kernel did not have the token!");
                     }
@@ -418,22 +427,41 @@ public class Kernel {
 	}
 	
 	private void handleNbr(SctpChannel sc, SelectionKey key) throws Exception {
-	    ByteBuffer buf = ByteBuffer.allocate(5);
-	    sc.receive(buf, null, null);
-	    byte code = buf.get();
-	    MessageType mt = MessageType.fromCode(code);
-	    if (mt == MessageType.REQUEST) {
-	        // TODO
-	    } else if (mt == MessageType.TOKEN) {
-	        // TODO
-	    } else if (mt == MessageType.NODEDONE) {
-	        // TODO
-	    } else {
-	        throw new Exception("Unexpected message type from neighbor.");
+	    Neighbor nbr = (Neighbor) key.attachment();
+	    ByteBuffer buf = ByteBuffer.allocate(2 * 45 + 5 + 1); // upper bound on amount sent
+	    sc.receive(buf, null, null);                          // 45 nodes * 2 bytes per done message, 5 bytes for a token, 1 byte for a request
+	    while (buf.hasRemaining()) {
+    	    byte code = buf.get();
+    	    MessageType mt = MessageType.fromCode(code);
+    	    if (mt == MessageType.REQUEST) {
+    	        if (request_queue.isEmpty() && hasToken()) {
+    	            send_token(nbr.node_id);
+    	        } else if (!request_queue.isEmpty() && hasToken()) {
+    	            throw new Exception("Finished previous IO, had a nonempty queue and the token, yet did not do anything with the token.");
+    	        } else {
+    	            if (request_queue.isEmpty()) {
+    	                send_request();
+    	            }
+    	            request_queue.add(nbr.node_id);
+    	        }
+    	    } else if (mt == MessageType.TOKEN) {
+    	        token_ts = buf.getInt();
+    	        handleTokenGain();
+    	    } else if (mt == MessageType.NODEDONE) {
+    	        int done_id = (int) buf.get();
+    	        for (Neighbor neighbor : neighbors) {
+    	            if (done_id != neighbor.node_id) {
+    	                send_node_done(done_id, neighbor.node_id);
+    	            }
+    	        }
+    	    } else {
+    	        throw new Exception("Unexpected message type from neighbor.");
+    	    }
 	    }
 	}
 	
 	private void handleTokenGain() throws IOException {
+	    parent = node_id;
 	    if (greedy == true && request_queue.contains(node_id)) {
 	        request_queue.remove(node_id);
 	        csGrant();
