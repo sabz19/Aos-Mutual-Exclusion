@@ -27,6 +27,7 @@ num_requests=0
 host_list=()
 port_list=()
 parent_list=()
+counter=0
 current_line=1
 
 while read line;
@@ -58,18 +59,17 @@ do
 done < temp
 
 echo ${host_list[0]}
-node_id=0
+counter=0
 javac $CLASSPATH$CLASSFILE.java
-javac $CLASSPATH$CLASSAPPFILE.java
-greedy=FALSE
-while [ $node_id -lt $node_count ]
+greedy=TRUE
+while [ $counter -lt $node_count ]
 do
 	
-ssh ${host_list[$node_id]} java $CLASSPATH$CLASSFILE $node_id ${host_list[$node_id]} ${port_list[$node_id]} ${parent_list[$node_id]} $CONFIGPATH $node_count $greedy &
-ssh ${host_list[$node_id]} java $CLASSPATH$CLASSAPPFILE $node_id $inter_request_delay $critical_section_time $num_requests &
+ ssh ${host_list[$counter]} java $CLASSPATH$CLASSFILE $counter ${host_list[$counter]} ${port_list[$counter]} ${parent_list[$counter]} $CONFIGPATH $node_count $greedy &
+ssh $host java $CLASSPATH$CLASSAPPFILE $inter_request_delay $critical_section_time &
 
 
-let node_id+=1
+let counter+=1
 	
 done
 	

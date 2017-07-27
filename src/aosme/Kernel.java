@@ -319,7 +319,11 @@ public class Kernel {
 		String config_PATH = args[4];
 		int num_nodes = Integer.parseInt(args[5]);
 		
+		
 		Kernel kernel = new Kernel(node_id,port,parent,num_nodes);
+		
+		if(args[6].equalsIgnoreCase("TRUE"))
+			kernel.greedy = true;
 		
 		Parser.startsWithToken(config_PATH, node_id);
 		Parser.parseChildCount(config_PATH, node_id,parent);
