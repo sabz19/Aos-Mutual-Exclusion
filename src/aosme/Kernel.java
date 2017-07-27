@@ -153,22 +153,27 @@ public class Kernel {
 	
 	public void open_all_connections() throws InterruptedException, IOException{
 		
+		
 		for(Neighbor neighbor:neighbors){
+			
 			boolean connection_established = false;
 			while(!connection_established){
 				try {
 					
 					neighbor.client_channel = SctpChannel.open();
 					neighbor.client_channel.connect(neighbor.serverAddress);
+					connection_established = true;
+			        ByteBuffer b = ByteBuffer.allocate(1);
+		            b.put( (byte) node_id);
+		            b.flip();
+		            MessageInfo mi = MessageInfo.createOutgoing(null,0);   
+		            neighbor.client_channel.send(b, mi); // send id
+					
 				} catch (IOException e) {
 					Thread.sleep(2000);
 				 }
-                ByteBuffer b = ByteBuffer.allocate(1);
-                b.put( (byte) node_id);
-                b.flip();
-                MessageInfo mi = MessageInfo.createOutgoing(null,0);   
-                neighbor.client_channel.send(b, mi); // send id
-                connection_established = true;
+       
+              
 			}
 		}
 		logger.info("ALL connections done releasing lock");
@@ -187,12 +192,13 @@ public class Kernel {
 		while(i < neighbors.size()){	
 			
 			SctpChannel serverChannel = server.accept();
+			logger.info("Connection established");
             ByteBuffer b = ByteBuffer.allocate(1);
             serverChannel.receive(b, null, null); // receive id
 			serverChannel.configureBlocking(false);
 			// attach neighbor info to the channel's key
 			serverChannel.register(channel_selector, SelectionKey.OP_READ, neighbor_Map.get(b.get(0)));
-			logger.info("Connection established");
+			
 			i++;
 		}	
 	}
@@ -256,6 +262,7 @@ public class Kernel {
     
     // Interface to apps to notify the kernel of app completion.
     public static void appDone(int id) throws IOException {
+    	
         String home = System.getProperty("user.home");
         Path a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
         OutputStream toKern = Files.newOutputStream(a2k, StandardOpenOption.APPEND,
@@ -317,6 +324,11 @@ public class Kernel {
 		Parser.startsWithToken(config_PATH, node_id);
 		Parser.parseChildCount(config_PATH, node_id,parent);
 		
+		kernel.logger.info("My neighbors");
+		for(Neighbor neighbor:kernel.neighbors){
+			kernel.logger.info(Integer.toString(neighbor.node_id));
+		}
+		
 		Pipe p = Pipe.open();
 		kernel.new FileListener(p.sink(), node_id).start();
 		kernel.pipein = p.source();
@@ -348,15 +360,13 @@ public class Kernel {
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
-		kernel.logger.info("My neighbors");
-		for(Neighbor neighbor:kernel.neighbors){
-			kernel.logger.info(Integer.toString(neighbor.node_id));
-		}
 		
-		kernel.mainLoop();
+		
+		//kernel.mainLoop();
 	}
 	
 	private void mainLoop() throws Exception {
+		
 	    while (!allNodesDone()) {
 	        channel_selector.select();
 	        Set<SelectionKey> keys = channel_selector.selectedKeys();
@@ -427,6 +437,7 @@ public class Kernel {
 	}
 	
 	private void handleNbr(SctpChannel sc, SelectionKey key) throws Exception {
+		
 	    Neighbor nbr = (Neighbor) key.attachment();
 	    ByteBuffer buf = ByteBuffer.allocate(2 * 45 + 5 + 1); // upper bound on amount sent
 	    sc.receive(buf, null, null);                          // 45 nodes * 2 bytes per done message, 5 bytes for a token, 1 byte for a request
