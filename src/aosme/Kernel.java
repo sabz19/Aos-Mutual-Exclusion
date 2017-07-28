@@ -2,11 +2,6 @@ package aosme;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -18,10 +13,15 @@ import java.nio.channels.Pipe;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -35,9 +35,6 @@ import java.util.logging.SimpleFormatter;
 import com.sun.nio.sctp.MessageInfo;
 import com.sun.nio.sctp.SctpChannel;
 import com.sun.nio.sctp.SctpServerChannel;
-
-import aosme.Kernel.Neighbor;
-
 
 public class Kernel {
 	
@@ -66,6 +63,13 @@ public class Kernel {
 	
 	private Pipe.SourceChannel pipein;
 	
+    private static Path a2k;
+    private static Path k2a;
+
+    private static InputStream fromKern;
+    private static InputStream fromApp;
+    private static OutputStream toKern;
+    private static OutputStream toApp;
 	
 	/*
 	 *  Constructor to initialize all related objects
@@ -86,6 +90,8 @@ public class Kernel {
 		
 		token_ts = 0;
 		token_in_use = false;
+		
+		initAppConnections(node_id);
 		
 		/*
 		 * Start all loggers
@@ -202,6 +208,52 @@ public class Kernel {
 			i++;
 		}	
 	}
+
+	private static void initAppConnections(int id) throws IOException {
+	    String home = System.getProperty("user.home");
+        a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
+        k2a = Paths.get(home, "aosme", "Kern" + id + "ToApp" + id + ".cnl");
+        fromApp = Files.newInputStream(a2k, StandardOpenOption.CREATE,
+                StandardOpenOption.READ);
+        toApp = Files.newOutputStream(k2a, StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE);
+	}
+	
+	
+	private static void closeAppConnections() throws IOException {
+	    fromApp.close();
+	    toApp.close();
+	    boolean deleted = false;
+	    while (!deleted) {
+    	    try {
+        	    Files.deleteIfExists(a2k);
+        	    Files.deleteIfExists(k2a);
+        	    deleted = true;
+    	    } catch (IOException e) {
+    	        try {
+                    Thread.sleep(5);
+                } catch (InterruptedException e1) {}
+    	    }
+	    }
+	}
+
+    private static WatchService appWatcher;
+	private static void initKernelConnections(int id) throws IOException {
+        String home = System.getProperty("user.home");
+        a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
+        k2a = Paths.get(home, "aosme", "Kern" + id + "ToApp" + id + ".cnl");
+        fromKern = Files.newInputStream(k2a, StandardOpenOption.CREATE,
+                StandardOpenOption.READ);
+        toKern = Files.newOutputStream(a2k, StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE);
+        appWatcher = FileSystems.getDefault().newWatchService();
+        Paths.get(home, "aosme").register(appWatcher, StandardWatchEventKinds.ENTRY_MODIFY);
+	}
+	
+	private static void closeKernelConnections() throws IOException {
+        toKern.close();
+	    fromKern.close();
+	}
 	
 	private boolean hasToken() {
 	    if (parent == node_id)
@@ -210,37 +262,39 @@ public class Kernel {
 	        return false;
 	}
 	
+	private static void waitForFileChange(WatchService watcher, String fileName) throws InterruptedException {
+        while (true) {
+            WatchKey key = watcher.take();
+            for (WatchEvent<?> event : key.pollEvents()) {
+                if (event.context().toString().endsWith(fileName))
+                    return;
+            }
+        }
+    }
+	
 	// Function called within the kernel to grant permission to the application
 	private void csGrant() throws IOException{
-        String home = System.getProperty("user.home");
-        Path k2a = Paths.get(home, "aosme", "Kern" + node_id + "ToApp" + node_id + ".cnl");
-        OutputStream toApp = Files.newOutputStream(k2a, StandardOpenOption.APPEND,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
 		critical_section_logger.info("Granting request. Timestamp: " + token_ts);
 		token_in_use = true;
 		toApp.write(MessageType.CSGRANT.toCode());
 		toApp.flush();
-		toApp.close();
 	}
 	
+	private static boolean firstCsEntry = true;
 	// Interface to apps to enter the critical section. ID of the app is used
 	// to determine what file (channel) to access the kernel with.
 	public static void csEnter(int id) throws Exception {
-        String home = System.getProperty("user.home");
-        Path a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
-        Path k2a = Paths.get(home, "aosme", "Kern" + id + "ToApp" + id + ".cnl");
-        OutputStream toKern = Files.newOutputStream(a2k, StandardOpenOption.APPEND,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-        InputStream fromKern = Files.newInputStream(k2a, StandardOpenOption.CREATE,
-                StandardOpenOption.READ);
+	    if (firstCsEntry) {
+	        initKernelConnections(id);
+	        firstCsEntry = false;
+	    }
         toKern.write(MessageType.CSREQUEST.toCode());
         toKern.flush();
-        toKern.close();
-        int code = fromKern.read(); // blocks until input
-        fromKern.close();
-        Files.deleteIfExists(k2a);
-        if (code == -1)
-            throw new IOException("Encountered EOS while reading from kernel.");
+        int code = fromKern.read();
+        if (code == -1) {
+            waitForFileChange(appWatcher, "Kern" + id + "ToApp" + id + ".cnl");
+            code = fromKern.read();
+        }
         MessageType mt = MessageType.fromCode((byte) code);
         if (mt == MessageType.CSGRANT) {
             return;
@@ -251,25 +305,15 @@ public class Kernel {
     
     // Interface to apps to exit the critical section.
     public static void csExit(int id) throws IOException {
-        String home = System.getProperty("user.home");
-        Path a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
-        OutputStream toKern = Files.newOutputStream(a2k, StandardOpenOption.APPEND,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
         toKern.write(MessageType.CSRETURN.toCode());
         toKern.flush();
-        toKern.close();
     }
     
     // Interface to apps to notify the kernel of app completion.
     public static void appDone(int id) throws IOException {
-    	
-        String home = System.getProperty("user.home");
-        Path a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
-        OutputStream toKern = Files.newOutputStream(a2k, StandardOpenOption.APPEND,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-        toKern.write(MessageType.APPDONE.toCode());
+    	toKern.write(MessageType.APPDONE.toCode());
         toKern.flush();
-        toKern.close();
+        closeKernelConnections();
     }
 	
 	public void send_buffer(ByteBuffer message, int nbr_id){
@@ -334,7 +378,8 @@ public class Kernel {
 		}
 		
 		Pipe p = Pipe.open();
-		kernel.new FileListener(p.sink(), node_id).start();
+		FileListener fl = kernel.new FileListener(p.sink(), kernel.fromApp, node_id);
+		fl.start();
 		kernel.pipein = p.source();
 		kernel.pipein.configureBlocking(false);
 		kernel.pipein.register(kernel.channel_selector, SelectionKey.OP_READ);
@@ -366,7 +411,11 @@ public class Kernel {
 		}
 		
 		
-		//kernel.mainLoop();
+		kernel.mainLoop();
+		fl.interrupt();
+		connection_thread.join();
+		fl.join();
+		closeAppConnections();
 	}
 	
 	private void mainLoop() throws Exception {
@@ -510,47 +559,70 @@ public class Kernel {
 	private class FileListener extends Thread {
 	    private final Pipe.SinkChannel out;
 	    private final int id;
+	    private final InputStream in;
 
-	    FileListener(Pipe.SinkChannel out, int id) {
+	    FileListener(Pipe.SinkChannel out, InputStream fromApp, int id) {
 	        this.out = out;
 	        this.id = id;
+	        this.in = fromApp;
 	    }
 
 	    @Override
 	    public void run() {
-	        String home = System.getProperty("user.home");
-
-	        // ex. ~/aosme/App1ToKern1.cnl
-	        Path fpath = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
-	        InputStream in = null;
+	        WatchService watcher = null;
+	        
             try {
-                in = Files.newInputStream(fpath,
-                        StandardOpenOption.READ,    // open for reading
-                        StandardOpenOption.CREATE,  // create iff it doesn't exist
-                        // delete on close (may not work properly here since never closed; TODO?)
-                        StandardOpenOption.DELETE_ON_CLOSE);
-            } catch (IOException e) {
-                // TODO: Might need to pass a reference to the logger. Are these messages visible?
-                System.err.println("Input channel from app could not be opened.");
-                System.exit(1);
+                watcher = FileSystems.getDefault().newWatchService();
+            } catch (IOException e1) {
+                e1.printStackTrace();
             }
+            
+	        String home = System.getProperty("user.home");
+	        
+	        try {
+                Paths.get(home, "aosme").register(watcher, StandardWatchEventKinds.ENTRY_MODIFY);
+            } catch (IOException e1) {
+                e1.printStackTrace();
+            }
+	        
             byte[] buf = new byte[20];
-            // for now this just runs indefinitely until the process is killed (by main or something else)
-	        while (true) {
+	        while (!Thread.currentThread().isInterrupted()) {
 	            int numRead = 0;
+	            
                 try {
                     numRead = in.read(buf);
                 } catch (IOException e) {
+                    e.printStackTrace();
                     System.err.println("Could not read from app channel!");
                     System.exit(1);
                 }
-                ByteBuffer bbuf = ByteBuffer.wrap(buf, 0, numRead);
-                bbuf.flip(); // constrains the buffer to what was read, making it ready to be written; not a literal flip
-                try {
-                    out.write(bbuf);
-                } catch (IOException e) {
-                    System.err.println("Could not write to kernel's pipe!");
-                    System.exit(1);
+                
+                if (numRead == -1) {
+                    
+                    try {
+                        waitForFileChange(watcher, "App" + id + "ToKern" + id + ".cnl");
+                    } catch (InterruptedException e) {
+                        logger.info("Kernel's watcher was interrupted. Assuming it is time to exit.");
+                    }
+                    
+                    try {
+                        numRead = in.read(buf);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        System.err.println("Could not read from app channel!");
+                        System.exit(1);
+                    }
+                    
+                } else {
+                    ByteBuffer bbuf = ByteBuffer.wrap(buf, 0, numRead);
+                    bbuf.flip(); // constrains the buffer to what was read, making it ready to be written; not a literal flip
+                    try {
+                        out.write(bbuf);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        System.err.println("Could not write to kernel's pipe!");
+                        System.exit(1);
+                    }
                 }
 	        }
 	    }
