@@ -57,7 +57,11 @@ public class Parser {
                                     errExit("Configuration file has bad format.");
                                 }
                             } else {
-                                errExit("Configuration file has bad format.");
+                                try {
+                                    vals[i] = Integer.parseInt(tokens[i]);
+                                } catch (NumberFormatException f) {
+                                    errExit("Configuration file has bad format.");
+                                }
                             }
                         } else {
                             errExit("Configuration file has bad format.");
@@ -104,8 +108,6 @@ public class Parser {
             try {
             	
                 tokens[0] = lineParser.next();
-                if(count > 0)
-                	node_id = Integer.parseInt(tokens[0]);
             } catch (NoSuchElementException e) {
                 lineParser.close();
                 continue;
@@ -114,6 +116,8 @@ public class Parser {
                 lineParser.close();
                 continue;
             } else {
+                if(count > 0)
+                    node_id = Integer.parseInt(tokens[0]);
                 for (int i = 1; i < 4; i++) {
                     try {
                         tokens[i] = lineParser.next();
@@ -125,8 +129,22 @@ public class Parser {
                         		host_name = tokens[i];
                         	if(i == 2)
                         		port = Integer.parseInt(tokens[i]);
-                        	if(i == 3)
-                        		parent = Integer.parseInt(tokens[i]);
+                        	if(i == 3) {
+                                int cStart = tokens[i].indexOf('#');
+                                if (cStart != -1) {
+                                    try {
+                                        parent = Integer.parseInt(tokens[i].substring(0, cStart));
+                                    } catch (NumberFormatException f) {
+                                        errExit("Configuration file has bad format.");
+                                    }
+                                } else {
+                                    try {
+                                        parent = Integer.parseInt(tokens[i]);
+                                    } catch (NumberFormatException f) {
+                                        errExit("Configuration file has bad format.");
+                                    }
+                                }
+                        	}
                         }
                    
                         

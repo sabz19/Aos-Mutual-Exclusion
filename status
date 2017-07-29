@@ -11,6 +11,7 @@ CONFIG=$CONFIGPATH/$(basename $2)
 
 PROJDIRSCRIPT='$(find ~ -name '\'Aos-Mutual-Exclusion\'' | head -1)'
 REMOTELOGS=$PROJDIRSCRIPT/logs
+REMOTEOUT=$PROJDIRSCRIPT/out
 
 n=0
 host=dc01
@@ -23,11 +24,9 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
 	do
 		host=$(echo $line | awk '{print $2}')
 
-		echo Cleaning $host
+		echo Checking $host for Java processes:
 
-        # having two seems to help
-		ssh $NETID@$host.$DOMAIN "pkill -u $NETID java" &
-		ssh $NETID@$host.$DOMAIN "pkill -u $NETID java" &
+		ssh -n $NETID@$host.$DOMAIN "ps -fu "'$USER'" | grep java | grep -v grep | grep -v bash"
 
 		n=$(($n + 1))
 		if [ $n -ge $nodes ];then
@@ -35,5 +34,3 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
 		fi
 	done
 )
-
-echo "Cleanup complete"

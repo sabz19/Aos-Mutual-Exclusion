@@ -1,0 +1,37 @@
+#!/bin/bash
+
+PROJDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+NETID=$1
+DOMAIN=utdallas.edu
+
+#command line arguments
+CONFIGPATH=$PROJDIR/config
+CONFIG=$CONFIGPATH/$(basename $2)
+
+PROJDIRSCRIPT='$(find ~ -name '\'Aos-Mutual-Exclusion\'' | head -1)'
+REMOTELOGS=$PROJDIRSCRIPT/logs
+REMOTEOUT=$PROJDIRSCRIPT/out
+
+n=0
+cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
+(
+	read i
+	nodes=$(echo $i | cut -f1 -d" ")
+	
+    EXC=""
+    while [ $n -lt $nodes ]; do
+        n=$(($n + 1))
+        EXC+="echo Kernel $n output:; echo; cat $REMOTEOUT/Kern$n.out 2>/dev/null; echo;"
+        EXC+="echo Kernel $n errors:; echo; cat $REMOTEOUT/Kern$n.err 2>/dev/null; echo;"
+        EXC+="echo Kernel $n info logs:; echo; cat $REMOTELOGS/Kern$n.log 2>/dev/null; echo;"
+        EXC+="echo Kernel $n critical logs:; echo; cat $REMOTELOGS/critical/Kern$n.log 2>/dev/null; echo;"
+        
+        EXC+="echo App $n output:; echo; cat $REMOTEOUT/App$n.out 2>/dev/null; echo;"
+        EXC+="echo App $n errors:; echo; cat $REMOTEOUT/App$n.err 2>/dev/null; echo;"
+        EXC+="echo App $n info logs:; echo; cat $REMOTELOGS/App$n.log 2>/dev/null; echo;"
+        EXC+="echo App $n critical logs:; echo; cat $REMOTELOGS/critical/App$n.log 2>/dev/null; echo;"
+    done
+    
+    ssh $NETID@dc01.$DOMAIN "$EXC"
+)

@@ -1,7 +1,8 @@
 #!/bin/bash
 
 PROJDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJDIRSCRIPT='$(find ~ -name '\'Aos-Mutual-Exclusion\'' | head -1)'
+PROJDIRFIND='$(find ~ -name '\'Aos-Mutual-Exclusion\'' | head -1)'
+PROJDIRSCRIPT='$(echo $AOSMEROOT)'
 
 NETID=$1
 DOMAIN=utdallas.edu
@@ -38,6 +39,9 @@ port_list=()
 parent_list=()
 current_line=1
 
+ssh -n $NETID@dc01.$DOMAIN "find ~ -name 'Aos-Mutual-Exclusion' | head -1 | xargs /bin/printf 'export AOSMEROOT=%s' >> ~/.bashrc"
+ssh -n $NETID@dc01.$DOMAIN "rm -rf $REMOTEOUT; mkdir -p $REMOTEOUT; rm -rf $REMOTECOMM; mkdir -p $REMOTECOMM; rm -rf $REMOTELOGS; mkdir -p $REMOTELOGS/critical"
+
 while IFS='' read -r line || [[ -n "$line" ]];
 do
 	#turn all spaces to single line
@@ -66,14 +70,12 @@ do
 
 done < temp
 
-ssh $NETID@${host_list[0]}.$DOMAIN "rm -rf $REMOTEOUT; mkdir -p $REMOTEOUT; rm -rf $REMOTECOMM; mkdir -p $REMOTECOMM; rm -rf $REMOTELOGS; mkdir -p $REMOTELOGS/critical"
-
 node_id=0
 while [ $node_id -lt $node_count ]
 do
-	
-ssh $NETID@${host_list[$node_id]}.$DOMAIN "java -cp $CLASSPATH $CLASSFILE $node_id ${host_list[$node_id]} ${port_list[$node_id]} ${parent_list[$node_id]} $REMOTECONFIG $node_count $GREEDY >$REMOTEOUT/Kern${node_id}.out 2>$REMOTEOUT/Kern${node_id}.err &" &
-ssh $NETID@${host_list[$node_id]}.$DOMAIN "java -cp $CLASSPATH $CLASSAPPFILE $node_id $inter_request_delay $critical_section_time $num_requests >$REMOTEOUT/App${node_id}.out 2>$REMOTEOUT/App${node_id}.err &" &
+
+ssh -n $NETID@${host_list[$node_id]}.$DOMAIN "nohup java -cp $CLASSPATH $CLASSFILE $node_id ${host_list[$node_id]} ${port_list[$node_id]} ${parent_list[$node_id]} $REMOTECONFIG $node_count $GREEDY >$REMOTEOUT/Kern${node_id}.out 2>$REMOTEOUT/Kern${node_id}.err < /dev/null &" &
+ssh -n $NETID@${host_list[$node_id]}.$DOMAIN "nohup java -cp $CLASSPATH $CLASSAPPFILE $node_id $inter_request_delay $critical_section_time $num_requests >$REMOTEOUT/App${node_id}.out 2>$REMOTEOUT/App${node_id}.err < /dev/null &" &
 
 
 let node_id+=1

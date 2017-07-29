@@ -60,7 +60,8 @@ public class Kernel {
 	
 	
 	static Logger logger,critical_section_logger;
-	FileHandler regular_file,critical_section_file;
+	static FileHandler regular_file;
+    static FileHandler critical_section_file;
 	
 	private Pipe.SourceChannel pipein;
 	
@@ -114,8 +115,8 @@ public class Kernel {
 		 * Start all loggers
 		 */
 		
-		regular_file = new FileHandler(logs.toString() + System.getProperty("path.separator") +node_id+".log");
-		critical_section_file = new FileHandler(logs.toString() + System.getProperty("path.separator") + "critical" + System.getProperty("path.separator") +node_id+".log");
+		regular_file = new FileHandler(logs.toString() + System.getProperty("path.separator") +"Kern" +node_id+".log");
+		critical_section_file = new FileHandler(logs.toString() + System.getProperty("path.separator") + "critical" + System.getProperty("path.separator") + "Kern" +node_id+".log");
 		
 		SimpleFormatter formatter = new SimpleFormatter();
 		regular_file.setFormatter(formatter);
@@ -233,6 +234,23 @@ public class Kernel {
 			i++;
 		}	
 	}
+	
+	private static void initAppLoggers(int id) throws SecurityException, IOException {
+	    regular_file = new FileHandler(logs.toString() + System.getProperty("path.separator") + "App" + id +".log");
+        critical_section_file = new FileHandler(logs.toString() + System.getProperty("path.separator") + "critical" + System.getProperty("path.separator") + "App" + id +".log");
+        
+        SimpleFormatter formatter = new SimpleFormatter();
+        regular_file.setFormatter(formatter);
+        critical_section_file.setFormatter(formatter);
+        
+        logger = Logger.getLogger("Regular_Log");
+        logger.setLevel(Level.INFO);
+        logger.addHandler(regular_file);
+        
+        critical_section_logger = Logger.getLogger("Crit_Log");
+        critical_section_logger.setLevel(Level.INFO);
+        critical_section_logger.addHandler(critical_section_file);
+	}
 
 	private static void initAppConnections(int id) throws IOException {
 		
@@ -275,6 +293,16 @@ public class Kernel {
         a2k = Paths.get(comm.toString(), "App" + id + "ToKern" + id + ".cnl");
         k2a = Paths.get(comm.toString(), "Kern" + id + "ToApp" + id + ".cnl");
         
+        if (!Files.exists(a2k)) {
+            try {
+                Files.createFile(a2k);
+            } catch (Exception e) {}
+        }
+        if (!Files.exists(k2a)) {
+            try {
+                Files.createFile(k2a);
+            } catch (Exception e) {}
+        }
 		
         fromKern = Files.newInputStream(k2a, 
                 StandardOpenOption.READ);
@@ -325,6 +353,7 @@ public class Kernel {
 		
 	    if (firstCsEntry) {
 	    	getPaths();
+	    	initAppLoggers(id);
 	        initKernelConnections(id);
 	        firstCsEntry = false;
 	    }
@@ -566,7 +595,7 @@ public class Kernel {
 	        String home = System.getProperty("user.home");
 	        
 	        try {
-                Paths.get(home,"aosme","Comm").register(watcher, StandardWatchEventKinds.ENTRY_MODIFY);
+                comm.register(watcher, StandardWatchEventKinds.ENTRY_MODIFY);
             } catch (IOException e1) {
                 e1.printStackTrace();
             }
@@ -625,6 +654,8 @@ public class Kernel {
 		
 		if(args.length > 6 && args[6].equalsIgnoreCase("TRUE"))
 			kernel.greedy = true;
+		
+		kernel.logger.info("Greedy: " + kernel.greedy);
 		
 		Parser.startsWithToken(config_PATH, node_id);
 		Parser.parseChildCount(config_PATH, node_id,parent);
