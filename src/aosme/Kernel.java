@@ -2,6 +2,7 @@ package aosme;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -70,6 +71,10 @@ public class Kernel {
     private static InputStream fromApp;
     private static OutputStream toKern;
     private static OutputStream toApp;
+    
+    private static Path base;
+    private static Path comm;
+    private static Path logs;
 	
 	/*
 	 *  Constructor to initialize all related objects
@@ -94,8 +99,8 @@ public class Kernel {
 		token_in_use = false;
 		
 		String home = System.getProperty("user.home");
-		a2k = Paths.get(home, "aosme", "Comm","App" + node_id + "ToKern" + node_id + ".cnl");
-	    k2a = Paths.get(home, "aosme", "Comm","Kern" + node_id + "ToApp" + node_id + ".cnl");
+		a2k = Paths.get(comm.toString(),"App" + node_id + "ToKern" + node_id + ".cnl");
+	    k2a = Paths.get(comm.toString(),"Kern" + node_id + "ToApp" + node_id + ".cnl");
 	    
 	    if(!Files.exists(a2k))
 	    	Files.createFile(a2k);
@@ -109,8 +114,8 @@ public class Kernel {
 		 * Start all loggers
 		 */
 		
-		regular_file = new FileHandler(System.getProperty("user.home")+"/aosme/Logs/"+node_id+".log");
-		critical_section_file = new FileHandler(System.getProperty("user.home")+"/aosme/Logs/Critical/"+node_id+".log");
+		regular_file = new FileHandler(logs.toString() + System.getProperty("path.separator") +node_id+".log");
+		critical_section_file = new FileHandler(logs.toString() + System.getProperty("path.separator") + "critical" + System.getProperty("path.separator") +node_id+".log");
 		
 		SimpleFormatter formatter = new SimpleFormatter();
 		regular_file.setFormatter(formatter);
@@ -169,6 +174,18 @@ public class Kernel {
 	 * Connect to all open neighbor servers
 	 */
 	
+	public static void getPaths() {
+        final File kf = new File(Kernel.class.getProtectionDomain().getCodeSource().getLocation().getPath());
+        Path kp = kf.toPath();
+        System.out.println(kp.toString());
+        base = kp.getParent();
+        System.out.println(base.toString());
+        comm = Paths.get(base.toString(), "comm");
+        System.out.println(comm.toString());
+        logs = Paths.get(base.toString(), "logs");
+        System.out.println(logs.toString());
+	}
+	
 	public void open_all_connections() throws InterruptedException, IOException{
 		
 		
@@ -224,8 +241,8 @@ public class Kernel {
 	private static void initAppConnections(int id) throws IOException {
 		
 	    String home = System.getProperty("user.home");
-        a2k = Paths.get(home, "aosme", "Comm","App" + id + "ToKern" + id + ".cnl");
-        k2a = Paths.get(home, "aosme", "Comm","Kern" + id + "ToApp" + id + ".cnl");
+        a2k = Paths.get(comm.toString(), "App" + id + "ToKern" + id + ".cnl");
+        k2a = Paths.get(comm.toString(), "Kern" + id + "ToApp" + id + ".cnl");
         
         
         fromApp = Files.newInputStream(a2k,
@@ -259,8 +276,8 @@ public class Kernel {
 	private static void initKernelConnections(int id) throws IOException {
 		
         String home = System.getProperty("user.home");
-        a2k = Paths.get(home, "aosme","Comm" ,"App" + id + "ToKern" + id + ".cnl");
-        k2a = Paths.get(home, "aosme","Comm", "Kern" + id + "ToApp" + id + ".cnl");
+        a2k = Paths.get(comm.toString(), "App" + id + "ToKern" + id + ".cnl");
+        k2a = Paths.get(comm.toString(), "Kern" + id + "ToApp" + id + ".cnl");
         
 		
         fromKern = Files.newInputStream(k2a, 
@@ -268,7 +285,7 @@ public class Kernel {
         toKern = Files.newOutputStream(a2k, 
                 StandardOpenOption.WRITE);
         appWatcher = FileSystems.getDefault().newWatchService();
-        Paths.get(home, "aosme","Comm").register(appWatcher, StandardWatchEventKinds.ENTRY_MODIFY);
+        comm.register(appWatcher, StandardWatchEventKinds.ENTRY_MODIFY);
 	}
 	
 	private static void closeKernelConnections() throws IOException {
@@ -277,7 +294,7 @@ public class Kernel {
 	}
 	
 	private boolean hasToken() {
-	    if (parent == node_id)
+	    if (parent == node_id && token_in_use == false)
 	        return true;
 	    else
 	        return false;
@@ -287,9 +304,12 @@ public class Kernel {
         while (true) {
             WatchKey key = watcher.take();
             for (WatchEvent<?> event : key.pollEvents()) {
-                if (event.context().toString().endsWith(fileName))
+                if (event.context().toString().endsWith(fileName)) {
+                    key.reset();
                     return;
+                }
             }
+            key.reset();
         }
     }
 	
@@ -308,7 +328,7 @@ public class Kernel {
 	public static void csEnter(int id) throws Exception {
 		
 	    if (firstCsEntry) {
-	    	
+	    	getPaths();
 	        initKernelConnections(id);
 	        firstCsEntry = false;
 	    }
@@ -594,7 +614,8 @@ public class Kernel {
 	    }
 	}
 	public static void main(String args[]) throws Exception{
-		
+	    
+	    getPaths();
 		
 		int node_id = Integer.parseInt(args[0]);
 		//args[1] is host name

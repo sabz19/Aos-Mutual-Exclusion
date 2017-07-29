@@ -1,0 +1,40 @@
+#!/bin/bash
+
+PROJDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+NETID=$1
+DOMAIN=utdallas.edu
+
+#command line arguments
+CONFIGPATH=$PROJDIR/config
+CONFIG=$CONFIGPATH/$2
+
+PROJDIRSCRIPT='$(find ~ -name '\'Aos-Mutual-Exclusion\'' | head -1)'
+REMOTELOGS=$PROJDIRSCRIPT/logs
+
+n=0
+host=dc01
+cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
+(
+	read i
+	nodes=$(echo $i | cut -f1 -d" ")
+		
+	while IFS='' read -r line || [[ -n "$line" ]];
+	do
+        echo $line
+		host=$(echo $line | awk '{print $2}')
+
+		echo Cleaning $host
+
+		ssh $NETID@$host.$DOMAIN "pkill -u $NETID java" &
+
+		n=$(($n + 1))
+		if [ $n -ge $nodes ];then
+			break
+		fi
+	done
+)
+
+# Removing logs 
+ssh  $NETID@$host.$DOMAIN "rm -rf $REMOTELOGS" &
+echo "Cleanup complete"

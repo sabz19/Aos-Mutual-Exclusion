@@ -1,0 +1,83 @@
+#!/bin/bash
+
+PROJDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJDIRSCRIPT='$(find ~ -name '\'Aos-Mutual-Exclusion\'' | head -1)'
+
+NETID=$1
+DOMAIN=utdallas.edu
+
+#command line arguments
+CONFIGPATH=$PROJDIR/config
+CONFIG=$CONFIGPATH/$2
+GREEDY=$3
+
+#remote arguments
+CLASSPATH=$PROJDIRSCRIPT/bin
+REMOTECONFIG=$PROJDIRSCRIPT/config/$2
+REMOTEOUT=$PROJDIRSCRIPT/out
+REMOTELOGS=$PROJDIRSCRIPT/logs
+REMOTECOMM=$PROJDIRSCRIPT/comm
+CLASSFILE=aosme/Kernel
+CLASSAPPFILE=aosme/Application
+
+# commented this out since it's unused and rev is a problem on MinGW
+#config_file_name=$(echo $CONFIG | rev | cut -f1 -d"/" |rev | cut -f1 -d ".")
+#echo $config_file_name
+#extract lines from config file
+
+sed -e "s/#.*//" $CONFIG | sed -e "/^\s*$/d" >temp
+
+echo >>temp
+
+node_count=0
+inter_request_delay=0
+critical_section_time=0
+num_requests=0
+host_list=()
+port_list=()
+parent_list=()
+current_line=1
+
+while IFS='' read -r line || [[ -n "$line" ]];
+do
+	#turn all spaces to single line
+	line=$(echo $line | tr -s ' ')
+	if [ $current_line -eq 1 ]; then
+		line1=($line)
+		node_count=$(echo $line | cut -f1 -d" ")
+		inter_request_delay=$(echo $line | cut -f2 -d" ")
+		critical_section_time=$(echo $line | cut -f3 -d" ")
+		num_requests=$(echo $line | cut -f4 -d" ")	
+	else
+		stringarray=($line)
+		
+		port_id=${stringarray[2]}
+		port_list+=($port_id)
+		
+		host=${stringarray[1]}
+		host_list+=($host)
+	
+		parent=${stringarray[3]}
+		parent_list+=($parent)
+		
+	fi
+	let current_line+=1
+
+
+done < temp
+
+ssh $NETID@${host_list[0]}.$DOMAIN "rm -rf $REMOTEOUT; mkdir -p $REMOTEOUT; rm -rf $REMOTECOMM; mkdir -p $REMOTECOMM; rm -rf $REMOTELOGS; mkdir -p $REMOTELOGS/critical"
+
+node_id=0
+while [ $node_id -lt $node_count ]
+do
+	
+ssh $NETID@${host_list[$node_id]}.$DOMAIN "java -cp $CLASSPATH $CLASSFILE $node_id ${host_list[$node_id]} ${port_list[$node_id]} ${parent_list[$node_id]} $REMOTECONFIG $node_count $GREEDY >$REMOTEOUT/Kern${node_id}.out 2>$REMOTEOUT/Kern${node_id}.err &" &
+ssh $NETID@${host_list[$node_id]}.$DOMAIN "java -cp $CLASSPATH $CLASSAPPFILE $node_id $inter_request_delay $critical_section_time $num_requests >$REMOTEOUT/App${node_id}.out 2>$REMOTEOUT/App${node_id}.err &" &
+
+
+let node_id+=1
+	
+done
+
+rm temp
