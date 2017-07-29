@@ -177,13 +177,9 @@ public class Kernel {
 	public static void getPaths() {
         final File kf = new File(Kernel.class.getProtectionDomain().getCodeSource().getLocation().getPath());
         Path kp = kf.toPath();
-        System.out.println(kp.toString());
         base = kp.getParent();
-        System.out.println(base.toString());
         comm = Paths.get(base.toString(), "comm");
-        System.out.println(comm.toString());
         logs = Paths.get(base.toString(), "logs");
-        System.out.println(logs.toString());
 	}
 	
 	public void open_all_connections() throws InterruptedException, IOException{
