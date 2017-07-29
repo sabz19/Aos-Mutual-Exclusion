@@ -40,7 +40,6 @@ public class Kernel {
 	
 	
 	Object connection_lock; // lock on connect before allowing client channels to send messages
-	static Object file_lock =  new Object();;
 	private int port,num_nodes,node_id,parent = -1;
 	boolean greedy;
 	boolean done;
@@ -261,9 +260,7 @@ public class Kernel {
         String home = System.getProperty("user.home");
         a2k = Paths.get(home, "aosme","Comm" ,"App" + id + "ToKern" + id + ".cnl");
         k2a = Paths.get(home, "aosme","Comm", "Kern" + id + "ToApp" + id + ".cnl");
-      
-        file_lock = new Object();
-       
+        
 		
         fromKern = Files.newInputStream(k2a, 
                 StandardOpenOption.READ);
@@ -605,7 +602,7 @@ public class Kernel {
 		
 		Kernel kernel = new Kernel(node_id,port,parent,num_nodes);
 		
-		if(args[6].equalsIgnoreCase("TRUE"))
+		if(args.length > 6 && args[6].equalsIgnoreCase("TRUE"))
 			kernel.greedy = true;
 		
 		Parser.startsWithToken(config_PATH, node_id);
