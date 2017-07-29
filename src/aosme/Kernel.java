@@ -578,14 +578,6 @@ public class Kernel {
                         logger.info("Kernel's watcher was interrupted. Assuming it is time to exit.");
                     }
                     
-                    try {
-                        numRead = in.read(buf);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        System.err.println("Could not read from app channel!");
-                        System.exit(1);
-                    }
-                    
                 } else {
                     ByteBuffer bbuf = ByteBuffer.wrap(buf, 0, numRead);
                     bbuf.flip(); // constrains the buffer to what was read, making it ready to be written; not a literal flip
