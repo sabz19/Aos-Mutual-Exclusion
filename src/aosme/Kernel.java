@@ -555,9 +555,9 @@ public class Kernel {
                 e1.printStackTrace();
             }
 	        
-            byte[] buf = new byte[20];
 	        while (!Thread.currentThread().isInterrupted()) {
-	            int numRead = 0;
+	            byte[] buf = new byte[20];
+	            int numRead = -1;
 	            
                 try {
                     numRead = in.read(buf);
@@ -576,6 +576,9 @@ public class Kernel {
                         logger.info("Kernel's watcher was interrupted. Assuming it is time to exit.");
                     }
                     
+                } else if (numRead == 0) {
+                    System.err.println("Read length 0 from the input stream?");
+                    System.exit(1);
                 } else {
                     ByteBuffer bbuf = ByteBuffer.wrap(buf, 0, numRead);
                     bbuf.flip(); // constrains the buffer to what was read, making it ready to be written; not a literal flip
