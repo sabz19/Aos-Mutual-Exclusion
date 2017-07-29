@@ -9,7 +9,7 @@ DOMAIN=utdallas.edu
 CONFIGPATH=$PROJDIR/config
 CONFIG=$CONFIGPATH/$(basename $2)
 
-PROJDIRSCRIPT='$(find ~ -name '\'Aos-Mutual-Exclusion\'' | head -1)'
+PROJDIRSCRIPT='$(echo $AOSMEROOT)'
 REMOTELOGS=$PROJDIRSCRIPT/logs
 REMOTEOUT=$PROJDIRSCRIPT/out
 
@@ -21,7 +21,6 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
 	
     EXC=""
     while [ $n -lt $nodes ]; do
-        n=$(($n + 1))
         EXC+="echo Kernel $n output:; echo; cat $REMOTEOUT/Kern$n.out 2>/dev/null; echo;"
         EXC+="echo Kernel $n errors:; echo; cat $REMOTEOUT/Kern$n.err 2>/dev/null; echo;"
         EXC+="echo Kernel $n info logs:; echo; cat $REMOTELOGS/Kern$n.log 2>/dev/null; echo;"
@@ -31,6 +30,7 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
         EXC+="echo App $n errors:; echo; cat $REMOTEOUT/App$n.err 2>/dev/null; echo;"
         EXC+="echo App $n info logs:; echo; cat $REMOTELOGS/App$n.log 2>/dev/null; echo;"
         EXC+="echo App $n critical logs:; echo; cat $REMOTELOGS/critical/App$n.log 2>/dev/null; echo;"
+        n=$(($n + 1))
     done
     
     ssh $NETID@dc01.$DOMAIN "$EXC"

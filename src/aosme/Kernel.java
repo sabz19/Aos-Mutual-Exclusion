@@ -99,7 +99,6 @@ public class Kernel {
 		token_ts = 0;
 		token_in_use = false;
 		
-		String home = System.getProperty("user.home");
 		a2k = Paths.get(comm.toString(),"App" + node_id + "ToKern" + node_id + ".cnl");
 	    k2a = Paths.get(comm.toString(),"Kern" + node_id + "ToApp" + node_id + ".cnl");
 	    
@@ -115,20 +114,22 @@ public class Kernel {
 		 * Start all loggers
 		 */
 		
-		regular_file = new FileHandler(logs.toString() + System.getProperty("path.separator") +"Kern" +node_id+".log");
-		critical_section_file = new FileHandler(logs.toString() + System.getProperty("path.separator") + "critical" + System.getProperty("path.separator") + "Kern" +node_id+".log");
+		regular_file = new FileHandler(logs.toString() + System.getProperty("file.separator") +"Kern" +node_id+".log");
+		critical_section_file = new FileHandler(logs.toString() + System.getProperty("file.separator") + "critical" + System.getProperty("file.separator") + "Kern" +node_id+".log");
 		
 		SimpleFormatter formatter = new SimpleFormatter();
 		regular_file.setFormatter(formatter);
 		critical_section_file.setFormatter(formatter);
 		
 		logger = Logger.getLogger("Regular_Log");
+        logger.addHandler(regular_file);
+		logger.setUseParentHandlers(false);
 		logger.setLevel(Level.INFO);
-		logger.addHandler(regular_file);
 		
 		critical_section_logger = Logger.getLogger("Crit_Log");
+        critical_section_logger.addHandler(critical_section_file);
+		critical_section_logger.setUseParentHandlers(false);
 		critical_section_logger.setLevel(Level.INFO);
-		critical_section_logger.addHandler(critical_section_file);
 		
 		logger.info("My node_id"+node_id);
 		logger.info("My port"+port);
@@ -144,7 +145,7 @@ public class Kernel {
 	public int get_num_nodes(){
 		return num_nodes;
 	}
-	public HashSet get_Neighbors(){
+	public HashSet<Neighbor> get_Neighbors(){
 		return neighbors;
 	}
 	
@@ -236,8 +237,8 @@ public class Kernel {
 	}
 	
 	private static void initAppLoggers(int id) throws SecurityException, IOException {
-	    regular_file = new FileHandler(logs.toString() + System.getProperty("path.separator") + "App" + id +".log");
-        critical_section_file = new FileHandler(logs.toString() + System.getProperty("path.separator") + "critical" + System.getProperty("path.separator") + "App" + id +".log");
+	    regular_file = new FileHandler(logs.toString() + System.getProperty("file.separator") + "App" + id +".log");
+        critical_section_file = new FileHandler(logs.toString() + System.getProperty("file.separator") + "critical" + System.getProperty("file.separator") + "App" + id +".log");
         
         SimpleFormatter formatter = new SimpleFormatter();
         regular_file.setFormatter(formatter);
@@ -254,7 +255,6 @@ public class Kernel {
 
 	private static void initAppConnections(int id) throws IOException {
 		
-	    String home = System.getProperty("user.home");
         a2k = Paths.get(comm.toString(), "App" + id + "ToKern" + id + ".cnl");
         k2a = Paths.get(comm.toString(), "Kern" + id + "ToApp" + id + ".cnl");
         
@@ -289,7 +289,6 @@ public class Kernel {
     
 	private static void initKernelConnections(int id) throws IOException {
 		
-        String home = System.getProperty("user.home");
         a2k = Paths.get(comm.toString(), "App" + id + "ToKern" + id + ".cnl");
         k2a = Paths.get(comm.toString(), "Kern" + id + "ToApp" + id + ".cnl");
         
@@ -428,21 +427,29 @@ public class Kernel {
 	
 	
 	private void mainLoop() throws Exception {
-		
+        logger.info("Entering main loop");
 	    while (!allNodesDone()) {
-	        channel_selector.select();
+            logger.info("Attempting to select channels");
 	        Set<SelectionKey> keys = channel_selector.selectedKeys();
 	        for (SelectionKey key : keys) {
+	            logger.info("Processing key");
 	            SelectableChannel ac = key.channel();
 	            if (ac instanceof Pipe.SourceChannel) {
+	                logger.info("Selected the pipe");
 	                handleApp( (Pipe.SourceChannel) ac, key);
 	            } else if (ac instanceof SctpChannel) {
+                    logger.info("Selected a socket");
 	                handleNbr( (SctpChannel) ac, key);
 	            } else {
 	                throw new Exception("Unexpected channel type in mainLoop().");
 	            }
 	        }
-	        keys.clear();
+	        if (keys.size() == 0) {
+	            logger.info("No keys were selected. Waiting.");
+	            channel_selector.select();
+	        } else if (keys.size() > 0) {
+	            keys.clear();
+	        }
 	    }
 	}
 	
@@ -591,8 +598,6 @@ public class Kernel {
             } catch (IOException e1) {
                 e1.printStackTrace();
             }
-            
-	        String home = System.getProperty("user.home");
 	        
 	        try {
                 comm.register(watcher, StandardWatchEventKinds.ENTRY_MODIFY);
@@ -655,18 +660,18 @@ public class Kernel {
 		if(args.length > 6 && args[6].equalsIgnoreCase("TRUE"))
 			kernel.greedy = true;
 		
-		kernel.logger.info("Greedy: " + kernel.greedy);
+		logger.info("Greedy: " + kernel.greedy);
 		
 		Parser.startsWithToken(config_PATH, node_id);
 		Parser.parseChildCount(config_PATH, node_id,parent);
 		
-		kernel.logger.info("My neighbors");
-		for(Neighbor neighbor:kernel.neighbors){
-			kernel.logger.info(Integer.toString(neighbor.node_id));
+		logger.info("My neighbors");
+		for(Neighbor neighbor : neighbors){
+			logger.info(Integer.toString(neighbor.node_id));
 		}
 		
 		Pipe p = Pipe.open();
-		FileListener fl = kernel.new FileListener(p.sink(), kernel.fromApp, node_id);
+		FileListener fl = kernel.new FileListener(p.sink(), fromApp, node_id);
 		fl.start();
 		kernel.pipein = p.source();
 		kernel.pipein.configureBlocking(false);
