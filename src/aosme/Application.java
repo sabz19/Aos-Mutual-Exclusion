@@ -40,13 +40,13 @@ public class Application {
         return Math.log(1-x)/(-lambda);
     }
     
-    public static void main(String args[]){
+    public static void main(String args[]) throws InterruptedException{
         
         int node_id = Integer.parseInt(args[0]);
         int meanIRD = Integer.parseInt(args[1]);
         int meanCSET = Integer.parseInt(args[2]);
         int requestnumber = Integer.parseInt(args[3]);
-        
+        Thread.sleep(4000);
         Application app = new Application(node_id, meanIRD, meanCSET, requestnumber);
     }
 }

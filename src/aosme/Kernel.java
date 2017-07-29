@@ -40,6 +40,7 @@ public class Kernel {
 	
 	
 	Object connection_lock; // lock on connect before allowing client channels to send messages
+	static Object file_lock =  new Object();;
 	private int port,num_nodes,node_id,parent = -1;
 	boolean greedy;
 	boolean done;
@@ -58,7 +59,7 @@ public class Kernel {
 	Queue<Integer> request_queue; //Store all incoming requests in this queue
 	
 	
-	Logger logger,critical_section_logger;
+	static Logger logger,critical_section_logger;
 	FileHandler regular_file,critical_section_file;
 	
 	private Pipe.SourceChannel pipein;
@@ -80,6 +81,7 @@ public class Kernel {
 		this.port = port;
 		this.parent = parent;
 		this.num_nodes = num_nodes;
+		
 		done = false;
 		
 		connection_lock = new Object();
@@ -91,6 +93,16 @@ public class Kernel {
 		token_ts = 0;
 		token_in_use = false;
 		
+		String home = System.getProperty("user.home");
+		a2k = Paths.get(home, "aosme", "Comm","App" + node_id + "ToKern" + node_id + ".cnl");
+	    k2a = Paths.get(home, "aosme", "Comm","Kern" + node_id + "ToApp" + node_id + ".cnl");
+	    
+	    if(!Files.exists(a2k))
+	    	Files.createFile(a2k);
+	    if(!Files.exists(k2a))
+	    	Files.createFile(k2a);
+	    
+	   
 		initAppConnections(node_id);
 		
 		/*
@@ -210,17 +222,22 @@ public class Kernel {
 	}
 
 	private static void initAppConnections(int id) throws IOException {
+		
 	    String home = System.getProperty("user.home");
-        a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
-        k2a = Paths.get(home, "aosme", "Kern" + id + "ToApp" + id + ".cnl");
-        fromApp = Files.newInputStream(a2k, StandardOpenOption.CREATE,
+        a2k = Paths.get(home, "aosme", "Comm","App" + id + "ToKern" + id + ".cnl");
+        k2a = Paths.get(home, "aosme", "Comm","Kern" + id + "ToApp" + id + ".cnl");
+        
+        
+        fromApp = Files.newInputStream(a2k,
                 StandardOpenOption.READ);
-        toApp = Files.newOutputStream(k2a, StandardOpenOption.CREATE,
+        toApp = Files.newOutputStream(k2a,
                 StandardOpenOption.WRITE);
+       
 	}
 	
 	
 	private static void closeAppConnections() throws IOException {
+		
 	    fromApp.close();
 	    toApp.close();
 	    boolean deleted = false;
@@ -238,16 +255,22 @@ public class Kernel {
 	}
 
     private static WatchService appWatcher;
+    
 	private static void initKernelConnections(int id) throws IOException {
+		
         String home = System.getProperty("user.home");
-        a2k = Paths.get(home, "aosme", "App" + id + "ToKern" + id + ".cnl");
-        k2a = Paths.get(home, "aosme", "Kern" + id + "ToApp" + id + ".cnl");
-        fromKern = Files.newInputStream(k2a, StandardOpenOption.CREATE,
+        a2k = Paths.get(home, "aosme","Comm" ,"App" + id + "ToKern" + id + ".cnl");
+        k2a = Paths.get(home, "aosme","Comm", "Kern" + id + "ToApp" + id + ".cnl");
+      
+        file_lock = new Object();
+       
+		
+        fromKern = Files.newInputStream(k2a, 
                 StandardOpenOption.READ);
-        toKern = Files.newOutputStream(a2k, StandardOpenOption.CREATE,
+        toKern = Files.newOutputStream(a2k, 
                 StandardOpenOption.WRITE);
         appWatcher = FileSystems.getDefault().newWatchService();
-        Paths.get(home, "aosme").register(appWatcher, StandardWatchEventKinds.ENTRY_MODIFY);
+        Paths.get(home, "aosme","Comm").register(appWatcher, StandardWatchEventKinds.ENTRY_MODIFY);
 	}
 	
 	private static void closeKernelConnections() throws IOException {
@@ -274,6 +297,7 @@ public class Kernel {
 	
 	// Function called within the kernel to grant permission to the application
 	private void csGrant() throws IOException{
+		
 		critical_section_logger.info("Granting request. Timestamp: " + token_ts);
 		token_in_use = true;
 		toApp.write(MessageType.CSGRANT.toCode());
@@ -284,19 +308,25 @@ public class Kernel {
 	// Interface to apps to enter the critical section. ID of the app is used
 	// to determine what file (channel) to access the kernel with.
 	public static void csEnter(int id) throws Exception {
+		
 	    if (firstCsEntry) {
+	    	
 	        initKernelConnections(id);
 	        firstCsEntry = false;
 	    }
         toKern.write(MessageType.CSREQUEST.toCode());
+        
         toKern.flush();
+        System.out.println("Wrote"+MessageType.CSREQUEST.toCode());
         int code = fromKern.read();
         if (code == -1) {
             waitForFileChange(appWatcher, "Kern" + id + "ToApp" + id + ".cnl");
+            System.out.println("Still waiting on file change");
             code = fromKern.read();
         }
         MessageType mt = MessageType.fromCode((byte) code);
         if (mt == MessageType.CSGRANT) {
+        	logger.info("Granted");
             return;
         } else {
             throw new IOException("Encountered unexpected message type from kernel.");
@@ -353,6 +383,223 @@ public class Kernel {
 	}
 	
 	
+	
+	private void mainLoop() throws Exception {
+		
+	    while (!allNodesDone()) {
+	        channel_selector.select();
+	        Set<SelectionKey> keys = channel_selector.selectedKeys();
+	        for (SelectionKey key : keys) {
+	            SelectableChannel ac = key.channel();
+	            if (ac instanceof Pipe.SourceChannel) {
+	                handleApp( (Pipe.SourceChannel) ac, key);
+	            } else if (ac instanceof SctpChannel) {
+	                handleNbr( (SctpChannel) ac, key);
+	            } else {
+	                throw new Exception("Unexpected channel type in mainLoop().");
+	            }
+	        }
+	        keys.clear();
+	    }
+	}
+	
+	private void handleApp(Pipe.SourceChannel sc, SelectionKey key) throws Exception {
+		
+        ByteBuffer buf = ByteBuffer.allocate(2);
+        int num_read = sc.read(buf);
+        if (num_read == 0) {
+            logger.info("Had an empty app stream read.");
+            return;
+        } else if (num_read == -1) {
+            if (done == false) {
+                throw new Exception("App stream ended without being done.");
+            } else {
+                key.cancel(); // stream ended and we were done, no need to monitor further
+            }
+        } else {
+            if (done == true) {
+                throw new Exception("Received message from app that was finished.");
+            }
+            while (buf.hasRemaining()) {
+                byte code = buf.get();
+                MessageType mt = MessageType.fromCode(code);
+                if (mt == MessageType.CSREQUEST) {
+                    if (hasToken() && request_queue.isEmpty()) {
+                    	logger.info("I have token entering csGrant");
+                        csGrant();
+                    } else if (hasToken() && !request_queue.isEmpty()) {
+                        throw new Exception("Had token, app was not using it, but queue was nonempty.");
+                    } else if (!hasToken() && request_queue.isEmpty()) {
+                        request_queue.add(node_id);
+                        send_request();
+                    } else if (!hasToken() && !request_queue.isEmpty()) {
+                        request_queue.add(node_id);
+                    }
+                } else if (mt == MessageType.CSRETURN) {
+                	logger.info("Returning from csReturn");
+                    token_in_use = false;
+                    token_ts++;
+                    if (!hasToken()) {
+                        throw new Exception("App was in critical section while kernel did not have the token!");
+                    }
+                    if (!request_queue.isEmpty()) {
+                        handleTokenGain();
+                    }
+                } else if (mt == MessageType.APPDONE) {
+                	logger.info("Done with all apps");
+                    done = true;
+                    key.cancel();
+                    for (Neighbor nbr : neighbors) {
+                        send_node_done(node_id, nbr.node_id);
+                    }
+                } else {
+                    throw new Exception("Unexpected message type from app.");
+                }
+            }
+        }
+	}
+	
+	private void handleNbr(SctpChannel sc, SelectionKey key) throws Exception {
+		
+	    Neighbor nbr = (Neighbor) key.attachment();
+	    ByteBuffer buf = ByteBuffer.allocate(2 * 45 + 5 + 1); // upper bound on amount sent
+	    sc.receive(buf, null, null);                          // 45 nodes * 2 bytes per done message, 5 bytes for a token, 1 byte for a request
+	    logger.info("Ever here??");
+	    while (buf.hasRemaining()) {
+    	    byte code = buf.get();
+    	    MessageType mt = MessageType.fromCode(code);
+    	    if (mt == MessageType.REQUEST) {
+    	        if (request_queue.isEmpty() && hasToken()) {
+    	            send_token(nbr.node_id);
+    	        } else if (!request_queue.isEmpty() && hasToken()) {
+    	            throw new Exception("Finished previous IO, had a nonempty queue and the token, yet did not do anything with the token.");
+    	        } else {
+    	            if (request_queue.isEmpty()) {
+    	                send_request();
+    	            }
+    	            request_queue.add(nbr.node_id);
+    	        }
+    	    } else if (mt == MessageType.TOKEN) {
+    	        token_ts = buf.getInt();
+    	        handleTokenGain();
+    	    } else if (mt == MessageType.NODEDONE) {
+    	        int done_id = (int) buf.get();
+    	        for (Neighbor neighbor : neighbors) {
+    	            if (done_id != neighbor.node_id) {
+    	                send_node_done(done_id, neighbor.node_id);
+    	            }
+    	        }
+    	    } else {
+    	        throw new Exception("Unexpected message type from neighbor.");
+    	    }
+	    }
+	}
+	
+	private void handleTokenGain() throws IOException {
+	    parent = node_id;
+	    if (greedy == true && request_queue.contains(node_id)) {
+	        request_queue.remove(node_id);
+	        csGrant();
+	    } else {
+	        int dest_id = request_queue.remove();
+	        if (dest_id != node_id) {
+	            send_token(dest_id);
+	            if (!request_queue.isEmpty()) {
+	                send_request();
+	            }
+	        } else {
+	            csGrant();
+	        }
+	    }
+	}
+	
+	private boolean allNodesDone() {
+	    if (done == false)
+	        return false;
+	    for (Neighbor n : neighbors) {
+	        if (n.done == false)
+	            return false;
+	    }
+	    return true;
+	}
+	
+	// This thread type's only purpose is to monitor the input file from the application
+	// and write anything it gets to the pipe to the kernel. This allows the kernel to
+	// use a Selector that can listen to both the network connections and the
+	// application.
+	private class FileListener extends Thread {
+		
+	    private final Pipe.SinkChannel out;
+	    private final int id;
+	    private final InputStream in;
+
+	    FileListener(Pipe.SinkChannel out, InputStream fromApp, int id) {
+	        this.out = out;
+	        this.id = id;
+	        this.in = fromApp;
+	    }
+
+	    @Override
+	    public void run() {
+	        WatchService watcher = null;
+	        
+            try {
+                watcher = FileSystems.getDefault().newWatchService();
+            } catch (IOException e1) {
+                e1.printStackTrace();
+            }
+            
+	        String home = System.getProperty("user.home");
+	        
+	        try {
+                Paths.get(home,"aosme","Comm").register(watcher, StandardWatchEventKinds.ENTRY_MODIFY);
+            } catch (IOException e1) {
+                e1.printStackTrace();
+            }
+	        
+            byte[] buf = new byte[20];
+	        while (!Thread.currentThread().isInterrupted()) {
+	            int numRead = 0;
+	            
+                try {
+                    numRead = in.read(buf);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    System.err.println("Could not read from app channel!");
+                    System.exit(1);
+                }
+                
+                if (numRead == -1) {
+                    
+                    try {
+                        waitForFileChange(watcher, "App" + id + "ToKern" + id + ".cnl");
+                        logger.info("Returned");
+                    } catch (InterruptedException e) {
+                        logger.info("Kernel's watcher was interrupted. Assuming it is time to exit.");
+                    }
+                    
+                    try {
+                        numRead = in.read(buf);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        System.err.println("Could not read from app channel!");
+                        System.exit(1);
+                    }
+                    
+                } else {
+                    ByteBuffer bbuf = ByteBuffer.wrap(buf, 0, numRead);
+                    bbuf.flip(); // constrains the buffer to what was read, making it ready to be written; not a literal flip
+                    try {
+                        out.write(bbuf);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        System.err.println("Could not write to kernel's pipe!");
+                        System.exit(1);
+                    }
+                }
+	        }
+	    }
+	}
 	public static void main(String args[]) throws Exception{
 		
 		
@@ -418,214 +665,5 @@ public class Kernel {
 		closeAppConnections();
 	}
 	
-	private void mainLoop() throws Exception {
-		
-	    while (!allNodesDone()) {
-	        channel_selector.select();
-	        Set<SelectionKey> keys = channel_selector.selectedKeys();
-	        for (SelectionKey key : keys) {
-	            SelectableChannel ac = key.channel();
-	            if (ac instanceof Pipe.SourceChannel) {
-	                handleApp( (Pipe.SourceChannel) ac, key);
-	            } else if (ac instanceof SctpChannel) {
-	                handleNbr( (SctpChannel) ac, key);
-	            } else {
-	                throw new Exception("Unexpected channel type in mainLoop().");
-	            }
-	        }
-	        keys.clear();
-	    }
-	}
-	
-	private void handleApp(Pipe.SourceChannel sc, SelectionKey key) throws Exception {
-        ByteBuffer buf = ByteBuffer.allocate(2);
-        int num_read = sc.read(buf);
-        if (num_read == 0) {
-            logger.info("Had an empty app stream read.");
-            return;
-        } else if (num_read == -1) {
-            if (done == false) {
-                throw new Exception("App stream ended without being done.");
-            } else {
-                key.cancel(); // stream ended and we were done, no need to monitor further
-            }
-        } else {
-            if (done == true) {
-                throw new Exception("Received message from app that was finished.");
-            }
-            while (buf.hasRemaining()) {
-                byte code = buf.get();
-                MessageType mt = MessageType.fromCode(code);
-                if (mt == MessageType.CSREQUEST) {
-                    if (hasToken() && request_queue.isEmpty()) {
-                        csGrant();
-                    } else if (hasToken() && !request_queue.isEmpty()) {
-                        throw new Exception("Had token, app was not using it, but queue was nonempty.");
-                    } else if (!hasToken() && request_queue.isEmpty()) {
-                        request_queue.add(node_id);
-                        send_request();
-                    } else if (!hasToken() && !request_queue.isEmpty()) {
-                        request_queue.add(node_id);
-                    }
-                } else if (mt == MessageType.CSRETURN) {
-                    token_in_use = false;
-                    token_ts++;
-                    if (!hasToken()) {
-                        throw new Exception("App was in critical section while kernel did not have the token!");
-                    }
-                    if (!request_queue.isEmpty()) {
-                        handleTokenGain();
-                    }
-                } else if (mt == MessageType.APPDONE) {
-                    done = true;
-                    key.cancel();
-                    for (Neighbor nbr : neighbors) {
-                        send_node_done(node_id, nbr.node_id);
-                    }
-                } else {
-                    throw new Exception("Unexpected message type from app.");
-                }
-            }
-        }
-	}
-	
-	private void handleNbr(SctpChannel sc, SelectionKey key) throws Exception {
-		
-	    Neighbor nbr = (Neighbor) key.attachment();
-	    ByteBuffer buf = ByteBuffer.allocate(2 * 45 + 5 + 1); // upper bound on amount sent
-	    sc.receive(buf, null, null);                          // 45 nodes * 2 bytes per done message, 5 bytes for a token, 1 byte for a request
-	    while (buf.hasRemaining()) {
-    	    byte code = buf.get();
-    	    MessageType mt = MessageType.fromCode(code);
-    	    if (mt == MessageType.REQUEST) {
-    	        if (request_queue.isEmpty() && hasToken()) {
-    	            send_token(nbr.node_id);
-    	        } else if (!request_queue.isEmpty() && hasToken()) {
-    	            throw new Exception("Finished previous IO, had a nonempty queue and the token, yet did not do anything with the token.");
-    	        } else {
-    	            if (request_queue.isEmpty()) {
-    	                send_request();
-    	            }
-    	            request_queue.add(nbr.node_id);
-    	        }
-    	    } else if (mt == MessageType.TOKEN) {
-    	        token_ts = buf.getInt();
-    	        handleTokenGain();
-    	    } else if (mt == MessageType.NODEDONE) {
-    	        int done_id = (int) buf.get();
-    	        for (Neighbor neighbor : neighbors) {
-    	            if (done_id != neighbor.node_id) {
-    	                send_node_done(done_id, neighbor.node_id);
-    	            }
-    	        }
-    	    } else {
-    	        throw new Exception("Unexpected message type from neighbor.");
-    	    }
-	    }
-	}
-	
-	private void handleTokenGain() throws IOException {
-	    parent = node_id;
-	    if (greedy == true && request_queue.contains(node_id)) {
-	        request_queue.remove(node_id);
-	        csGrant();
-	    } else {
-	        int dest_id = request_queue.remove();
-	        if (dest_id != node_id) {
-	            send_token(dest_id);
-	            if (!request_queue.isEmpty()) {
-	                send_request();
-	            }
-	        } else {
-	            csGrant();
-	        }
-	    }
-	}
-	
-	private boolean allNodesDone() {
-	    if (done == false)
-	        return false;
-	    for (Neighbor n : neighbors) {
-	        if (n.done == false)
-	            return false;
-	    }
-	    return true;
-	}
-	
-	// This thread type's only purpose is to monitor the input file from the application
-	// and write anything it gets to the pipe to the kernel. This allows the kernel to
-	// use a Selector that can listen to both the network connections and the
-	// application.
-	private class FileListener extends Thread {
-	    private final Pipe.SinkChannel out;
-	    private final int id;
-	    private final InputStream in;
-
-	    FileListener(Pipe.SinkChannel out, InputStream fromApp, int id) {
-	        this.out = out;
-	        this.id = id;
-	        this.in = fromApp;
-	    }
-
-	    @Override
-	    public void run() {
-	        WatchService watcher = null;
-	        
-            try {
-                watcher = FileSystems.getDefault().newWatchService();
-            } catch (IOException e1) {
-                e1.printStackTrace();
-            }
-            
-	        String home = System.getProperty("user.home");
-	        
-	        try {
-                Paths.get(home, "aosme").register(watcher, StandardWatchEventKinds.ENTRY_MODIFY);
-            } catch (IOException e1) {
-                e1.printStackTrace();
-            }
-	        
-            byte[] buf = new byte[20];
-	        while (!Thread.currentThread().isInterrupted()) {
-	            int numRead = 0;
-	            
-                try {
-                    numRead = in.read(buf);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    System.err.println("Could not read from app channel!");
-                    System.exit(1);
-                }
-                
-                if (numRead == -1) {
-                    
-                    try {
-                        waitForFileChange(watcher, "App" + id + "ToKern" + id + ".cnl");
-                    } catch (InterruptedException e) {
-                        logger.info("Kernel's watcher was interrupted. Assuming it is time to exit.");
-                    }
-                    
-                    try {
-                        numRead = in.read(buf);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        System.err.println("Could not read from app channel!");
-                        System.exit(1);
-                    }
-                    
-                } else {
-                    ByteBuffer bbuf = ByteBuffer.wrap(buf, 0, numRead);
-                    bbuf.flip(); // constrains the buffer to what was read, making it ready to be written; not a literal flip
-                    try {
-                        out.write(bbuf);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        System.err.println("Could not write to kernel's pipe!");
-                        System.exit(1);
-                    }
-                }
-	        }
-	    }
-	}
 
 }
