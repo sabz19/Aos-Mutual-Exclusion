@@ -7,7 +7,7 @@ DOMAIN=utdallas.edu
 
 #command line arguments
 CONFIGPATH=$PROJDIR/config
-CONFIG=$CONFIGPATH/$2
+CONFIG=$CONFIGPATH/$(basename $2)
 
 PROJDIRSCRIPT='$(find ~ -name '\'Aos-Mutual-Exclusion\'' | head -1)'
 REMOTELOGS=$PROJDIRSCRIPT/logs
