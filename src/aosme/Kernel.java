@@ -82,6 +82,7 @@ public class Kernel {
 		this.num_nodes = num_nodes;
 		
 		done = false;
+		greedy = false;
 		
 		connection_lock = new Object();
 		request_queue = new LinkedList<>();
