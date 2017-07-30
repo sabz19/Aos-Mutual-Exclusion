@@ -230,7 +230,7 @@ public class Kernel {
             serverChannel.receive(b, null, null); // receive id
 			serverChannel.configureBlocking(false);
 			// attach neighbor info to the channel's key
-			serverChannel.register(channel_selector, SelectionKey.OP_READ, neighbor_Map.get(b.get(0)));
+			serverChannel.register(channel_selector, SelectionKey.OP_READ, neighbor_Map.get((int) b.get(0)));
 			
 			i++;
 		}	
@@ -357,9 +357,8 @@ public class Kernel {
 	        firstCsEntry = false;
 	    }
         toKern.write(MessageType.CSREQUEST.toCode());
-        
         toKern.flush();
-        System.out.println("Wrote"+MessageType.CSREQUEST.toCode());
+        logger.info("Wrote "+MessageType.CSREQUEST);
         int code = fromKern.read();
         if (code == -1) {
             waitForFileChange(appWatcher, "Kern" + id + "ToApp" + id + ".cnl");
@@ -367,6 +366,7 @@ public class Kernel {
             code = fromKern.read();
         }
         MessageType mt = MessageType.fromCode((byte) code);
+        logger.info("Read " + mt);
         if (mt == MessageType.CSGRANT) {
         	logger.info("Granted");
             return;
@@ -379,6 +379,7 @@ public class Kernel {
     public static void csExit(int id) throws IOException {
         toKern.write(MessageType.CSRETURN.toCode());
         toKern.flush();
+        logger.info("Wrote "+MessageType.CSRETURN);
     }
     
     // Interface to apps to notify the kernel of app completion.
@@ -386,6 +387,7 @@ public class Kernel {
     	toKern.write(MessageType.APPDONE.toCode());
         toKern.flush();
         closeKernelConnections();
+        logger.info("Wrote "+MessageType.APPDONE);
     }
 	
 	public void send_buffer(ByteBuffer message, int nbr_id){
@@ -467,6 +469,7 @@ public class Kernel {
                 key.cancel(); // stream ended and we were done, no need to monitor further
             }
         } else {
+            buf.flip();
             if (done == true) {
                 throw new Exception("Received message from app that was finished.");
             }
@@ -503,7 +506,7 @@ public class Kernel {
                         send_node_done(node_id, nbr.node_id);
                     }
                 } else {
-                    throw new Exception("Unexpected message type from app.");
+                    throw new Exception("Unexpected message type from app: " + code);
                 }
             }
         }
@@ -512,10 +515,10 @@ public class Kernel {
 	private void handleNbr(SctpChannel sc, SelectionKey key) throws Exception {
 		
 	    Neighbor nbr = (Neighbor) key.attachment();
-	    ByteBuffer buf = ByteBuffer.allocate(2 * 45 + 5 + 1); // upper bound on amount sent
-	    sc.receive(buf, null, null);                          // 45 nodes * 2 bytes per done message, 5 bytes for a token, 1 byte for a request
-	    logger.info("Ever here??");
-	    while (buf.hasRemaining()) {
+	    ByteBuffer buf = ByteBuffer.allocate(5); // upper bound on amount sent: TOKEN message
+	    MessageInfo mi = sc.receive(buf, null, null);
+	    while (mi != null) {
+	        buf.flip();
     	    byte code = buf.get();
     	    MessageType mt = MessageType.fromCode(code);
     	    if (mt == MessageType.REQUEST) {
@@ -540,8 +543,10 @@ public class Kernel {
     	            }
     	        }
     	    } else {
-    	        throw new Exception("Unexpected message type from neighbor.");
+    	        throw new Exception("Unexpected message type from neighbor: " + mt);
     	    }
+    	    buf.clear();
+    	    mi = sc.receive(buf, null, null);
 	    }
 	}
 	
@@ -614,30 +619,34 @@ public class Kernel {
                 } catch (IOException e) {
                     e.printStackTrace();
                     System.err.println("Could not read from app channel!");
-                    System.exit(1);
+                    return;
                 }
                 
                 if (numRead == -1) {
                     
                     try {
                         waitForFileChange(watcher, "App" + id + "ToKern" + id + ".cnl");
-                        logger.info("Returned");
                     } catch (InterruptedException e) {
                         logger.info("Kernel's watcher was interrupted. Assuming it is time to exit.");
+                        return;
                     }
                     
                 } else if (numRead == 0) {
                     System.err.println("Read length 0 from the input stream?");
-                    System.exit(1);
+                    return;
                 } else {
                     ByteBuffer bbuf = ByteBuffer.wrap(buf, 0, numRead);
-                    bbuf.flip(); // constrains the buffer to what was read, making it ready to be written; not a literal flip
                     try {
+                        String bstring = "";
+                        for (int i = 0; i < bbuf.limit(); i++) {
+                            bstring += bbuf.get(i) + " ";
+                        }
+                        logger.info("FileListener sent the following through the pipe: " + bstring);
                         out.write(bbuf);
                     } catch (IOException e) {
                         e.printStackTrace();
                         System.err.println("Could not write to kernel's pipe!");
-                        System.exit(1);
+                        return;
                     }
                 }
 	        }
