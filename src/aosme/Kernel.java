@@ -43,7 +43,7 @@ public class Kernel {
 	Object connection_lock; // lock on connect before allowing client channels to send messages
 	private int port,num_nodes,node_id,parent = -1;
 	boolean greedy;
-	boolean done;
+	boolean[] done;
 	
 	String file = System.getProperty("user.home") + "/aosme/"+node_id+".txt";
 	int token_ts;
@@ -87,7 +87,10 @@ public class Kernel {
 		this.parent = parent;
 		this.num_nodes = num_nodes;
 		
-		done = false;
+		done = new boolean[num_nodes];
+		for (int i = 0; i < num_nodes; i++) {
+		    done[i] = false;
+		}
 		greedy = false;
 		
 		connection_lock = new Object();
@@ -155,13 +158,11 @@ public class Kernel {
 		SctpServerChannel server_Channel;
 		InetSocketAddress serverAddress;
 		int node_id;
-		boolean done;
 		
 		public Neighbor(int node_id,String host_name,int port) throws UnknownHostException{
 			
 			this.node_id = node_id;
 			serverAddress = new InetSocketAddress(InetAddress.getByName(host_name),port);
-			done = false;
 			
 		}
 		public static void add_Neighbors(int node_id,String host_name,int port) throws UnknownHostException{
@@ -245,10 +246,12 @@ public class Kernel {
         critical_section_file.setFormatter(formatter);
         
         logger = Logger.getLogger("Regular_Log");
+        logger.setUseParentHandlers(false);
         logger.setLevel(Level.INFO);
         logger.addHandler(regular_file);
         
         critical_section_logger = Logger.getLogger("Crit_Log");
+        critical_section_logger.setUseParentHandlers(false);
         critical_section_logger.setLevel(Level.INFO);
         critical_section_logger.addHandler(critical_section_file);
 	}
@@ -360,10 +363,12 @@ public class Kernel {
         toKern.flush();
         logger.info("Wrote "+MessageType.CSREQUEST);
         int code = fromKern.read();
-        if (code == -1) {
+        while (code == -1) {
             waitForFileChange(appWatcher, "Kern" + id + "ToApp" + id + ".cnl");
-            System.out.println("Still waiting on file change");
             code = fromKern.read();
+            if (code == -1) {
+                logger.info("At least two empty reads from the kernel.");
+            }
         }
         MessageType mt = MessageType.fromCode((byte) code);
         logger.info("Read " + mt);
@@ -391,9 +396,6 @@ public class Kernel {
     }
 	
 	public void send_buffer(ByteBuffer message, int nbr_id){
-		
-		logger.info("Sending "+message+" message to"+" "+nbr_id);
-		logger.info("message is " + message.asCharBuffer().toString());
 		MessageInfo messageInfo = MessageInfo.createOutgoing(null,0);	
 		try {
 			neighbor_Map.get(nbr_id).client_channel.send(message, messageInfo);
@@ -406,6 +408,7 @@ public class Kernel {
 	    if (node_id == parent) {
 	        return;
 	    }
+	    logger.info("Sending request to " + parent);
         ByteBuffer mbuf = ByteBuffer.allocate(1);
         mbuf.put(MessageType.REQUEST.code);
         mbuf.flip();
@@ -413,6 +416,7 @@ public class Kernel {
 	}
 	
 	public void send_token(int nbr_id) {
+	    logger.info("Sending token to " + nbr_id);
 	    ByteBuffer mbuf = ByteBuffer.allocate(5);
         mbuf.put(MessageType.TOKEN.code);
         mbuf.putInt(token_ts);
@@ -422,6 +426,7 @@ public class Kernel {
 	}
 	
 	public void send_node_done(int finished_id, int nbr_id) {
+	    logger.info("Notifying node " + nbr_id + " of App " + finished_id +"'s completion.");
         ByteBuffer mbuf = ByteBuffer.allocate(2);
         mbuf.put(MessageType.NODEDONE.code);
         mbuf.put( (byte) finished_id);
@@ -432,12 +437,10 @@ public class Kernel {
 	
 	
 	private void mainLoop() throws Exception {
-        logger.info("Entering main loop");
 	    while (!allNodesDone()) {
-            logger.info("Attempting to select channels");
+            channel_selector.select();
 	        Set<SelectionKey> keys = channel_selector.selectedKeys();
 	        for (SelectionKey key : keys) {
-	            logger.info("Processing key");
 	            SelectableChannel ac = key.channel();
 	            if (ac instanceof Pipe.SourceChannel) {
 	                logger.info("Selected the pipe");
@@ -449,12 +452,7 @@ public class Kernel {
 	                throw new Exception("Unexpected channel type in mainLoop().");
 	            }
 	        }
-	        if (keys.size() == 0) {
-	            logger.info("No keys were selected. Waiting.");
-	            channel_selector.select();
-	        } else if (keys.size() > 0) {
-	            keys.clear();
-	        }
+	        keys.clear();
 	    }
 	}
 	
@@ -466,14 +464,14 @@ public class Kernel {
             logger.info("Had an empty app stream read.");
             return;
         } else if (num_read == -1) {
-            if (done == false) {
+            if (done[node_id] == false) {
                 throw new Exception("App stream ended without being done.");
             } else {
                 key.cancel(); // stream ended and we were done, no need to monitor further
             }
         } else {
             buf.flip();
-            if (done == true) {
+            if (done[node_id] == true) {
                 throw new Exception("Received message from app that was finished.");
             }
             while (buf.hasRemaining()) {
@@ -481,7 +479,6 @@ public class Kernel {
                 MessageType mt = MessageType.fromCode(code);
                 if (mt == MessageType.CSREQUEST) {
                     if (hasToken() && request_queue.isEmpty()) {
-                    	logger.info("I have token entering csGrant");
                         csGrant();
                     } else if (hasToken() && !request_queue.isEmpty()) {
                         throw new Exception("Had token, app was not using it, but queue was nonempty.");
@@ -492,7 +489,6 @@ public class Kernel {
                         request_queue.add(node_id);
                     }
                 } else if (mt == MessageType.CSRETURN) {
-                	logger.info("Returning from csReturn");
                     token_in_use = false;
                     token_ts++;
                     if (!hasToken()) {
@@ -502,8 +498,7 @@ public class Kernel {
                         handleTokenGain();
                     }
                 } else if (mt == MessageType.APPDONE) {
-                	logger.info("Done with all apps");
-                    done = true;
+                    done[node_id] = true;
                     key.cancel();
                     for (Neighbor nbr : neighbors) {
                         send_node_done(node_id, nbr.node_id);
@@ -541,10 +536,11 @@ public class Kernel {
     	    } else if (mt == MessageType.NODEDONE) {
     	        int done_id = (int) buf.get();
     	        for (Neighbor neighbor : neighbors) {
-    	            if (done_id != neighbor.node_id) {
+    	            if (nbr.node_id != neighbor.node_id) {
     	                send_node_done(done_id, neighbor.node_id);
     	            }
     	        }
+    	        done[done_id] = true;
     	    } else {
     	        throw new Exception("Unexpected message type from neighbor: " + mt);
     	    }
@@ -572,11 +568,10 @@ public class Kernel {
 	}
 	
 	private boolean allNodesDone() {
-	    if (done == false)
-	        return false;
-	    for (Neighbor n : neighbors) {
-	        if (n.done == false)
+	    for (int i = 0; i < num_nodes; i++) {
+	        if (done[i] == false) {
 	            return false;
+	        }
 	    }
 	    return true;
 	}

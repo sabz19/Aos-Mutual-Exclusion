@@ -2,7 +2,7 @@
 #fenwofn efwnklwnefw
 ##
 
-4 20 10 1000
+4 20 10 10
 
 0 dc02  1234   0
 
