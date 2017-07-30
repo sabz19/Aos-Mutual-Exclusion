@@ -403,6 +403,9 @@ public class Kernel {
 	}
 	
 	public void send_request() {
+	    if (node_id == parent) {
+	        return;
+	    }
         ByteBuffer mbuf = ByteBuffer.allocate(1);
         mbuf.put(MessageType.REQUEST.code);
         mbuf.flip();
