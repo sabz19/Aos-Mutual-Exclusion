@@ -1,0 +1,54 @@
+#!/bin/bash
+
+PROJDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+TEMP=.progresstemp
+
+NETID=$1
+DOMAIN=utdallas.edu
+
+#command line arguments
+CONFIGPATH=$PROJDIR/config
+CONFIG=$CONFIGPATH/$(basename $2)
+
+PROJDIRSCRIPT='$(echo $AOSMEROOT)'
+REMOTELOGS=$PROJDIRSCRIPT/logs
+
+printed=0
+done=0
+total=0
+
+COLS=$(stty size | cut -f2 -d" ")
+
+cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
+(
+	read i
+	nodes=$(echo $i | cut -f1 -d" ")
+	mesgs=$(echo $i | cut -f4 -d" ")
+    total=$(($nodes * $mesgs))
+    
+    touch $TEMP
+    echo $done > $TEMP
+    
+    while [ $(cat $TEMP) -lt $total ]; do
+    (
+        sleep 5
+        n=0
+        EXC=""
+        while [ $n -lt $nodes ]; do
+            EXC+="cat $REMOTELOGS/critical/Kern$n.log 2>/dev/null; echo;"
+            n=$(($n + 1))
+        done
+        done=$( ( ssh $NETID@dc01.$DOMAIN "$EXC" | grep Granting | wc | sed 's/^ *//' | cut -f1 -d' ' ) )
+        donecolsprod=$(($done * $COLS))
+        bars=$(($donecolsprod / $total))
+        toprint=$(($bars - $printed))
+        printf "\r"
+        eval "printf '%0.s=' {1..$toprint}"
+        echo $done > $TEMP
+    )
+    done
+    
+    rm $TEMP
+
+)
