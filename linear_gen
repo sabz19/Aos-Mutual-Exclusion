@@ -1,0 +1,15 @@
+FILE=config_linear.txt
+BASEPORT=14750
+NODES=45
+
+rm -f $FILE
+touch $FILE
+echo $NODES 50 3 100 >> $FILE
+echo 0 dc01 $BASEPORT 0 >> $FILE
+
+n=1
+
+while [ $n -lt $NODES ]; do
+    echo $n $(printf "dc%02d" $(($n + 1))) $(($BASEPORT + $n)) $(($n - 1)) >> $FILE
+    n=$(($n + 1))
+done

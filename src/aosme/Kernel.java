@@ -30,6 +30,7 @@ import java.util.LinkedList;
 import java.util.Queue;
 import java.util.Set;
 import java.util.logging.FileHandler;
+import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
@@ -135,9 +136,9 @@ public class Kernel {
 		critical_section_logger.setUseParentHandlers(false);
 		critical_section_logger.setLevel(Level.INFO);
 		
-		logger.info("My node_id"+node_id);
-		logger.info("My port"+port);
-		logger.info("My parent"+parent);
+		logger.info("My node_id: "+node_id);
+		logger.info("My port: "+port);
+		logger.info("My parent: "+parent);
 		
 	}
 	/**
@@ -342,8 +343,10 @@ public class Kernel {
 	
 	// Function called within the kernel to grant permission to the application
 	private void csGrant() throws IOException{
-		
-		critical_section_logger.info("Granting request. Timestamp: " + token_ts);
+        critical_section_logger.info("Granting request. Timestamp: " + token_ts);
+        for (Handler h : critical_section_logger.getHandlers()) {
+            h.flush();
+        }
 		token_in_use = true;
 		toApp.write(MessageType.CSGRANT.toCode());
 		toApp.flush();
@@ -490,6 +493,7 @@ public class Kernel {
                         request_queue.add(node_id);
                     }
                 } else if (mt == MessageType.CSRETURN) {
+                    critical_section_logger.info("Received token from app.");
                     token_in_use = false;
                     token_ts++;
                     if (!hasToken()) {
@@ -522,6 +526,7 @@ public class Kernel {
 	        try{ 
 	            code = buf.get();
 	        } catch (BufferUnderflowException e) {
+	            logger.info("Received empty message from " + nbr.node_id);
 	            buf.clear();
 	            mi = sc.receive(buf, null, null);
 	            continue;
@@ -679,10 +684,11 @@ public class Kernel {
 		Parser.startsWithToken(config_PATH, node_id);
 		Parser.parseChildCount(config_PATH, node_id,parent);
 		
-		logger.info("My neighbors");
+		String nbrstr = "";
 		for(Neighbor neighbor : neighbors){
-			logger.info(Integer.toString(neighbor.node_id));
+			nbrstr += neighbor.node_id + " ";
 		}
+		logger.info("My neighbors: " + nbrstr);
 		
 		Pipe p = Pipe.open();
 		FileListener fl = kernel.new FileListener(p.sink(), fromApp, node_id);

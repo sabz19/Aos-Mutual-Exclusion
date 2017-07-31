@@ -26,8 +26,8 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
 		echo Cleaning $host
 
         # having two seems to help
-		ssh $NETID@$host.$DOMAIN "pkill -u $NETID java" &
-		ssh $NETID@$host.$DOMAIN "pkill -u $NETID java" &
+		ssh -n $NETID@$host.$DOMAIN "pkill -u $NETID java" &
+		ssh -n $NETID@$host.$DOMAIN "pkill -u $NETID java" &
 
 		n=$(($n + 1))
 		if [ $n -ge $nodes ];then
