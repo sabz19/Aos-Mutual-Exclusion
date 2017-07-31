@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.Pipe;
 import java.nio.channels.SelectableChannel;
@@ -517,7 +518,14 @@ public class Kernel {
 	    MessageInfo mi = sc.receive(buf, null, null);
 	    while (mi != null) {
 	        buf.flip();
-    	    byte code = buf.get();
+	        byte code;
+	        try{ 
+	            code = buf.get();
+	        } catch (BufferUnderflowException e) {
+	            buf.clear();
+	            mi = sc.receive(buf, null, null);
+	            continue;
+	        }
     	    MessageType mt = MessageType.fromCode(code);
     	    if (mt == MessageType.REQUEST) {
     	        if (request_queue.isEmpty() && hasToken()) {
@@ -651,7 +659,7 @@ public class Kernel {
 	    }
 	}
 	public static void main(String args[]) throws Exception{
-	    
+
 	    getPaths();
 		
 		int node_id = Integer.parseInt(args[0]);
@@ -660,7 +668,6 @@ public class Kernel {
 		int parent = Integer.parseInt(args[3]);
 		String config_PATH = args[4];
 		int num_nodes = Integer.parseInt(args[5]);
-		
 		
 		Kernel kernel = new Kernel(node_id,port,parent,num_nodes);
 		
