@@ -4,12 +4,12 @@ PROJDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 TEMP=.progresstemp
 
-NETID=$1
+NETID=$(cat $PROJDIR/.netidtemp)
 DOMAIN=utdallas.edu
 
 #command line arguments
 CONFIGPATH=$PROJDIR/config
-CONFIG=$CONFIGPATH/$(basename $2)
+CONFIG=$CONFIGPATH/$(cat $PROJDIR/.configtemp)
 
 PROJDIRSCRIPT='$(echo $AOSMEROOT)'
 REMOTELOGS=$PROJDIRSCRIPT/logs
@@ -32,7 +32,7 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
     
     while [ $(cat $TEMP) -lt $total ]; do
     (
-        sleep 5
+        sleep 3
         n=0
         EXC=""
         while [ $n -lt $nodes ]; do

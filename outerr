@@ -2,12 +2,12 @@
 
 PROJDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-NETID=$1
+NETID=$(cat $PROJDIR/.netidtemp)
 DOMAIN=utdallas.edu
 
 #command line arguments
 CONFIGPATH=$PROJDIR/config
-CONFIG=$CONFIGPATH/$(basename $2)
+CONFIG=$CONFIGPATH/$(cat $PROJDIR/.configtemp)
 
 PROJDIRSCRIPT='$(echo $AOSMEROOT)'
 REMOTEOUT=$PROJDIRSCRIPT/out

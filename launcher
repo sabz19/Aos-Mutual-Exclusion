@@ -7,6 +7,8 @@ PROJDIRSCRIPT='$(echo $AOSMEROOT)'
 NETID=$1
 DOMAIN=utdallas.edu
 
+echo $1 > $PROJDIR/.netidtemp
+
 #command line arguments
 CONFIGPATH=$PROJDIR/config
 CONFIG=$CONFIGPATH/$(basename $2)
@@ -20,6 +22,8 @@ REMOTELOGS=$PROJDIRSCRIPT/logs
 REMOTECOMM=$PROJDIRSCRIPT/comm
 CLASSFILE=aosme/Kernel
 CLASSAPPFILE=aosme/Application
+
+echo $(basename $2) > $PROJDIR/.configtemp
 
 # commented this out since it's unused and rev is a problem on MinGW
 #config_file_name=$(echo $CONFIG | rev | cut -f1 -d"/" |rev | cut -f1 -d ".")

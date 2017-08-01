@@ -18,3 +18,5 @@ bin
 .classpath
 comm
 logs
+.configtemp
+.netidtemp

@@ -8,5 +8,5 @@ Aos-Mutual-Exclusion:
 
 deploy:
 	ssh ${nid}@dc01.utdallas.edu "mkdir -p ${ROOTDIR}; rm -rf ${ROOTDIR}/*"
-	scp -r !(*.git|bin) ${nid}@dc01.utdallas.edu:${ROOTDIR}
+	scp -r !(*.git|bin|.configtemp|.netidtemp) ${nid}@dc01.utdallas.edu:${ROOTDIR}
 	ssh ${nid}@dc01.utdallas.edu "cd ${ROOTDIR}; make Aos-Mutual-Exclusion"
