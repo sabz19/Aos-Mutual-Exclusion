@@ -723,7 +723,7 @@ public class Kernel {
 			e.printStackTrace();
 		}
 		
-		
+		connection_thread.join();
 		kernel.mainLoop();
 		fl.interrupt();
 		connection_thread.join();
