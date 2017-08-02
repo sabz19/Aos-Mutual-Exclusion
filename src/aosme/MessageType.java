@@ -7,7 +7,9 @@ public enum MessageType {
     CSGRANT   ( (byte) 3),  // size: 1 byte:  CSGRANT
     CSRETURN  ( (byte) 4),  // size: 1 byte:  CSRETURN
     APPDONE   ( (byte) 5),  // size: 1 byte:  APPDONE
-    NODEDONE  ( (byte) 6);  // size: 2 bytes: NODEDONE, id (byte)
+    NODEDONE  ( (byte) 6),  // size: 2 bytes: NODEDONE, id (byte)
+    NETBUILD   ( (byte) 7), // size: 1 byte:  NETBUILD
+    NETSTART  ( (byte) 8);  // size: 1 byte:  NETSTART
     
     byte code;
     
@@ -28,6 +30,8 @@ public enum MessageType {
             case 4:  return CSRETURN;
             case 5:  return APPDONE;
             case 6:  return NODEDONE;
+            case 7:  return NETBUILD;
+            case 8:  return NETSTART;
             default: throw new Exception("Bad MessageType code value.");
         }
     }

@@ -239,6 +239,32 @@ public class Kernel {
 		}	
 	}
 	
+	private void wait_for_start() throws Exception {
+	    
+        channel_selector.select();
+        Set<SelectionKey> keys = channel_selector.selectedKeys();
+        for (SelectionKey key : keys) {
+            SelectableChannel ac = key.channel();
+            if (ac instanceof SctpChannel) {
+                SctpChannel sc = (SctpChannel) ac;
+                ByteBuffer b = ByteBuffer.allocate(1);
+                MessageInfo mi = sc.receive(b, null, null);
+                if (mi == null)
+                    continue;
+                MessageType mt = MessageType.fromCode(b.get(0));
+                if (mt == MessageType.NETSTART) {
+                    break;
+                } else {
+                    throw new Exception("Unexpected message type during network start phase.");
+                }
+            } else {
+                throw new Exception("Unexpected channel type in network start phase.");
+            }
+        }
+        keys.clear();
+        
+	}
+	
 	private static void initAppLoggers(int id) throws SecurityException, IOException {
 	    regular_file = new FileHandler(logs.toString() + System.getProperty("file.separator") + "App" + id +".log");
         critical_section_file = new FileHandler(logs.toString() + System.getProperty("file.separator") + "critical" + System.getProperty("file.separator") + "App" + id +".log");
@@ -407,6 +433,20 @@ public class Kernel {
 			e.printStackTrace();
 		}
 	}
+    
+    public void send_netbuild() {
+        ByteBuffer mbuf = ByteBuffer.allocate(1);
+        mbuf.put(MessageType.NETBUILD.code);
+        mbuf.flip();
+        send_buffer(mbuf, parent);
+    }
+    
+    public void send_netstart(int nbr_id) {
+        ByteBuffer mbuf = ByteBuffer.allocate(1);
+        mbuf.put(MessageType.NETSTART.code);
+        mbuf.flip();
+        send_buffer(mbuf, nbr_id);
+    }
 	
 	public void send_request() {
 	    if (node_id == parent) {
@@ -663,6 +703,7 @@ public class Kernel {
 	        }
 	    }
 	}
+	
 	public static void main(String args[]) throws Exception{
 
 	    getPaths();
@@ -689,13 +730,6 @@ public class Kernel {
 			nbrstr += neighbor.node_id + " ";
 		}
 		logger.info("My neighbors: " + nbrstr);
-		
-		Pipe p = Pipe.open();
-		FileListener fl = kernel.new FileListener(p.sink(), fromApp, node_id);
-		fl.start();
-		kernel.pipein = p.source();
-		kernel.pipein.configureBlocking(false);
-		kernel.pipein.register(kernel.channel_selector, SelectionKey.OP_READ);
 		
 		/**
 		 * Thread to run the server first and then call a method open connections to 
@@ -724,9 +758,68 @@ public class Kernel {
 		}
 		
 		connection_thread.join();
+		
+		if (neighbors.size() == 1 && !kernel.hasToken()) {
+		    logger.info("This node has only 1 neighbor.");
+		    // kernel.send_netbuild();
+		} else {
+		    int readies = 0;
+		    if (kernel.hasToken()) {
+		        readies--;
+		    }
+	        while (readies != neighbors.size() - 1) {
+	            logger.info("Readies: " + readies + "; Needed: " + neighbors.size());
+	            kernel.channel_selector.select();
+	            Set<SelectionKey> keys = kernel.channel_selector.selectedKeys();
+	            for (SelectionKey key : keys) {
+	                SelectableChannel ac = key.channel();
+	                if (ac instanceof SctpChannel) {
+	                    SctpChannel sc = (SctpChannel) ac;
+	                    ByteBuffer b = ByteBuffer.allocate(1);
+	                    MessageInfo mi = sc.receive(b, null, null);
+	                    if (mi == null)
+	                        continue;
+	                    MessageType mt = MessageType.fromCode(b.get(0));
+	                    if (mt == MessageType.NETBUILD) {
+	                        logger.info("NETBUILD received from " + ((Neighbor) key.attachment()).node_id); 
+	                        readies++;
+	                    } else {
+	                        throw new Exception("Unexpected message type during network build phase.");
+	                    }
+	                } else {
+	                    throw new Exception("Unexpected channel type in network build phase.");
+	                }
+	            }
+	            keys.clear();
+	        }
+		}
+		
+		if (kernel.hasToken()) {
+		    logger.info("Sending NETSTART from root.");
+		    for (Neighbor nbr : neighbors) {
+		        kernel.send_netstart(nbr.node_id);
+		    }
+		} else {
+		    logger.info("Sending NETBUILD");
+            kernel.send_netbuild();
+            kernel.wait_for_start();
+            logger.info("Sending NETSTART from other node.");
+            for (Neighbor nbr : neighbors) {
+                if (nbr.node_id != kernel.parent) {
+                    kernel.send_netstart(nbr.node_id);
+                }
+            }
+		}
+        
+        Pipe p = Pipe.open();
+        FileListener fl = kernel.new FileListener(p.sink(), fromApp, node_id);
+        fl.start();
+        kernel.pipein = p.source();
+        kernel.pipein.configureBlocking(false);
+        kernel.pipein.register(kernel.channel_selector, SelectionKey.OP_READ);
+		
 		kernel.mainLoop();
 		fl.interrupt();
-		connection_thread.join();
 		fl.join();
 		closeAppConnections();
 	}

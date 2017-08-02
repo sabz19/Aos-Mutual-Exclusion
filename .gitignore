@@ -20,3 +20,4 @@ comm
 logs
 .configtemp
 .netidtemp
+.progresstemp
