@@ -14,6 +14,8 @@ CONFIG=$CONFIGPATH/$(cat $PROJDIR/.configtemp)
 PROJDIRSCRIPT='$(echo $AOSMEROOT)'
 REMOTEOUT=$PROJDIRSCRIPT/out
 
+CSVFILE=$1
+
 printed=0
 done=0
 total=0
@@ -52,11 +54,19 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
     done
     
     rm $TEMP
+
+    if [ -n "$CSVFILE" ]; then
+        touch $CSVFILE
+        if [ 0 -eq $(ls -l $CSVFILE | cut -d" " -f5) ]; then
+            echo 'Configuration,Greedy,Number of nodes,Requests per node,IRD parameter (milliseconds),CSET parameter (milliseconds),Requests satisfied,Network active time (seconds),Network throughput (requests per second),Messages sent,Average response time (milliseconds)' > $CSVFILE
+        fi
+    fi
     
     sleep 4
     timestamps=$(./outerr | grep Granting | uniq | wc | sed 's/^[\t ]*//g' | cut -d" " -f1)
     if [ $timestamps -eq $total ]; then
         echo Checks passed.
+        echo Configuration: $(cat $PROJDIR/.configtemp)
         echo Number of nodes: $nodes
         echo Requests per node: $mesgs
         echo Inter-request delay parameter '('milliseconds')': $ird
@@ -65,9 +75,25 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
         exectime=$(./kernouterr | grep active | head -1 | cut -d" " -f4)
         echo Time network was active '('seconds')': $exectime
         echo 'Throughput (requests per second):' $(($total / $exectime))
-        echo Messages sent: $(./kernouterr | grep Messages | cut -d" " -f3 | awk '{s+=$1} END {print s}')
+        totalsent=$(./kernouterr | grep Messages | cut -d" " -f3 | awk '{s+=$1} END {print s}')
+        echo Messages sent: $totalsent
         totalresponsetime=$(./appouterr | grep Response | cut -d" " -f 3 | awk '{s+=$1} END {print s}')
         echo Average response time '('milliseconds')': $(($totalresponsetime / $timestamps))
+            
+        if [ -n "$CSVFILE" ]; then
+            echo -n $(cat $PROJDIR/.configtemp), >> $CSVFILE
+            echo -n $(cat $PROJDIR/.greedytemp), >> $CSVFILE
+            echo -n $nodes, >> $CSVFILE
+            echo -n $mesgs, >> $CSVFILE
+            echo -n $ird, >> $CSVFILE
+            echo -n $cset, >> $CSVFILE
+            echo -n $timestamps, >> $CSVFILE
+            echo -n $exectime, >> $CSVFILE
+            echo -n $(($total / $exectime)), >> $CSVFILE
+            echo -n $totalsent, >> $CSVFILE
+            echo $(($totalresponsetime / $timestamps)) >> $CSVFILE
+        fi
+        
     else
         echo The number of timestamps '('$timestamps')' did not match the expected number '('$total')'.
     fi

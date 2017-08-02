@@ -14,6 +14,8 @@ CONFIGPATH=$PROJDIR/config
 CONFIG=$CONFIGPATH/$(basename $2)
 GREEDY=$3
 
+echo $GREEDY > $PROJDIR/.greedytemp
+
 #remote arguments
 CLASSPATH=$PROJDIRSCRIPT/bin
 REMOTECONFIG=$PROJDIRSCRIPT/config/$(basename $2)
