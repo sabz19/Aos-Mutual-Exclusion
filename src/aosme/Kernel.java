@@ -24,6 +24,8 @@ import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -78,6 +80,9 @@ public class Kernel {
     private static Path base;
     private static Path comm;
     private static Path logs;
+    
+    private static int messages_sent = 0;
+    private static boolean protocol_started = false;
 	
 	/*
 	 *  Constructor to initialize all related objects
@@ -369,7 +374,7 @@ public class Kernel {
 	
 	// Function called within the kernel to grant permission to the application
 	private void csGrant() throws IOException{
-        critical_section_logger.info("Granting request. Timestamp: " + token_ts);
+        System.out.println("Granting request. Timestamp: " + token_ts);
         for (Handler h : critical_section_logger.getHandlers()) {
             h.flush();
         }
@@ -378,11 +383,14 @@ public class Kernel {
 		toApp.flush();
 	}
 	
+	
+	private static Instant start;
+	private static Instant end;
 	private static boolean firstCsEntry = true;
 	// Interface to apps to enter the critical section. ID of the app is used
 	// to determine what file (channel) to access the kernel with.
 	public static void csEnter(int id) throws Exception {
-		
+		start = Instant.now();
 	    if (firstCsEntry) {
 	    	getPaths();
 	    	initAppLoggers(id);
@@ -415,6 +423,8 @@ public class Kernel {
         toKern.write(MessageType.CSRETURN.toCode());
         toKern.flush();
         logger.info("Wrote "+MessageType.CSRETURN);
+        end = Instant.now();
+        System.out.println("Response time: " + Duration.between(start, end).toMillis() + " milliseconds");
     }
     
     // Interface to apps to notify the kernel of app completion.
@@ -457,6 +467,9 @@ public class Kernel {
         mbuf.put(MessageType.REQUEST.code);
         mbuf.flip();
         send_buffer(mbuf, parent);
+        if (protocol_started) {
+            messages_sent++;
+        }
 	}
 	
 	public void send_token(int nbr_id) {
@@ -467,6 +480,9 @@ public class Kernel {
         mbuf.flip();
         send_buffer(mbuf, nbr_id);
         parent = nbr_id;
+        if (protocol_started) {
+            messages_sent++;
+        }
 	}
 	
 	public void send_node_done(int finished_id, int nbr_id) {
@@ -481,6 +497,7 @@ public class Kernel {
 	
 	
 	private void mainLoop() throws Exception {
+	    protocol_started = true;
 	    while (!allNodesDone()) {
             channel_selector.select();
 	        Set<SelectionKey> keys = channel_selector.selectedKeys();
@@ -822,6 +839,7 @@ public class Kernel {
 		fl.interrupt();
 		fl.join();
 		closeAppConnections();
+		System.out.println("Messages sent: " + messages_sent);
 	}
 	
 

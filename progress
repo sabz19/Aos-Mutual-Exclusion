@@ -12,7 +12,7 @@ CONFIGPATH=$PROJDIR/config
 CONFIG=$CONFIGPATH/$(cat $PROJDIR/.configtemp)
 
 PROJDIRSCRIPT='$(echo $AOSMEROOT)'
-REMOTELOGS=$PROJDIRSCRIPT/logs
+REMOTEOUT=$PROJDIRSCRIPT/out
 
 printed=0
 done=0
@@ -36,7 +36,7 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
         n=0
         EXC=""
         while [ $n -lt $nodes ]; do
-            EXC+="cat $REMOTELOGS/critical/Kern$n.log 2>/dev/null; echo;"
+            EXC+="cat $REMOTEOUT/Kern$n.out 2>/dev/null; echo;"
             n=$(($n + 1))
         done
         done=$( ( ssh $NETID@dc01.$DOMAIN "$EXC" | grep Granting | wc | sed 's/^ *//' | cut -f1 -d' ' ) )

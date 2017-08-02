@@ -1,0 +1,29 @@
+#!/bin/bash
+
+PROJDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+NETID=$(cat $PROJDIR/.netidtemp)
+DOMAIN=utdallas.edu
+
+#command line arguments
+CONFIGPATH=$PROJDIR/config
+CONFIG=$CONFIGPATH/$(cat $PROJDIR/.configtemp)
+
+PROJDIRSCRIPT='$(echo $AOSMEROOT)'
+REMOTEOUT=$PROJDIRSCRIPT/out
+
+n=0
+cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
+(
+	read i
+	nodes=$(echo $i | cut -f1 -d" ")
+	
+    EXC=""
+    while [ $n -lt $nodes ]; do
+        EXC+="echo App $n output:; echo; cat $REMOTEOUT/App$n.out 2>/dev/null; echo;"
+        EXC+="echo App $n errors:; echo; cat $REMOTEOUT/App$n.err 2>/dev/null; echo;"
+        n=$(($n + 1))
+    done
+    
+    ssh $NETID@dc01.$DOMAIN "$EXC"
+)
