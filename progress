@@ -59,8 +59,8 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
         echo Checks passed.
         echo Number of nodes: $nodes
         echo Requests per node: $mesgs
-        echo Mean inter-request delay '('milliseconds')': $ird
-        echo Mean critical section time '('milliseconds')': $cset
+        echo Inter-request delay parameter '('milliseconds')': $ird
+        echo Critical section time parameter '('milliseconds')': $cset
         echo Requests satisfied: $timestamps
         exectime=$(./kernouterr | grep active | head -1 | cut -d" " -f4)
         echo Time network was active '('seconds')': $exectime
