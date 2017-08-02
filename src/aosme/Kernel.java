@@ -835,7 +835,11 @@ public class Kernel {
         kernel.pipein.configureBlocking(false);
         kernel.pipein.register(kernel.channel_selector, SelectionKey.OP_READ);
 		
+        Instant t1 = Instant.now();
 		kernel.mainLoop();
+		Instant t2 = Instant.now();
+		System.out.format("Time network active: %.3f seconds", Duration.between(t1, t2).toMillis() / 1000.0);
+		
 		fl.interrupt();
 		fl.join();
 		closeAppConnections();
