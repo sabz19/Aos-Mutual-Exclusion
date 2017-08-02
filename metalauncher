@@ -1,0 +1,44 @@
+#!/bin/bash
+
+PROJDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJDIRFIND='$(find ~ -name '\'Aos-Mutual-Exclusion\'' | head -1)'
+PROJDIRSCRIPT='$(echo $AOSMEROOT)'
+
+NETID=$1
+DOMAIN=utdallas.edu
+
+echo $1 > $PROJDIR/.netidtemp
+
+#command line arguments
+MCONFIGPATH=$PROJDIR/mconfig
+MCONFIG=$MCONFIGPATH/$(basename $2)
+OUTPUT=$3
+GREEDY=$4
+
+echo $(basename $2) > $PROJDIR/.mconfigtemp
+
+# commented this out since it's unused and rev is a problem on MinGW
+#config_file_name=$(echo $CONFIG | rev | cut -f1 -d"/" |rev | cut -f1 -d ".")
+#echo $config_file_name
+#extract lines from config file
+
+COUNT=$(grep . $MCONFIG| wc -l)
+i=0
+while IFS='' read -r line || [[ -n "$line" ]];
+do
+    if [ $i -ne 0 ]; then
+        echo
+    fi
+
+    echo Processing $line '('$i '/' $COUNT')'
+    ./launcher $(cat .netidtemp) $line $GREEDY
+    ./progress | tee .metalaunchertemp
+    
+    echo -n $line',' > $OUTPUT
+    
+    
+    rm -f .metalaunchertemp
+    
+    i=$(($i + 1))
+
+done < $(grep . $MCONFIG)

@@ -504,10 +504,10 @@ public class Kernel {
 	        for (SelectionKey key : keys) {
 	            SelectableChannel ac = key.channel();
 	            if (ac instanceof Pipe.SourceChannel) {
-	                logger.info("Selected the pipe");
+	                // logger.info("Selected the pipe");
 	                handleApp( (Pipe.SourceChannel) ac, key);
 	            } else if (ac instanceof SctpChannel) {
-                    logger.info("Selected a socket");
+                    // logger.info("Selected a socket");
 	                handleNbr( (SctpChannel) ac, key);
 	            } else {
 	                throw new Exception("Unexpected channel type in mainLoop().");
@@ -590,6 +590,7 @@ public class Kernel {
 	        }
     	    MessageType mt = MessageType.fromCode(code);
     	    if (mt == MessageType.REQUEST) {
+    	        logger.info("Received REQUEST from " + nbr.node_id);
     	        if (request_queue.isEmpty() && hasToken()) {
     	            send_token(nbr.node_id);
     	        } else if (!request_queue.isEmpty() && hasToken()) {
@@ -601,10 +602,12 @@ public class Kernel {
     	            request_queue.add(nbr.node_id);
     	        }
     	    } else if (mt == MessageType.TOKEN) {
+                logger.info("Received TOKEN from " + nbr.node_id);
     	        token_ts = buf.getInt();
     	        handleTokenGain();
     	    } else if (mt == MessageType.NODEDONE) {
     	        int done_id = (int) buf.get();
+                logger.info("Received NODEDONE from " + nbr.node_id + " on behalf of App " + done_id);
     	        for (Neighbor neighbor : neighbors) {
     	            if (nbr.node_id != neighbor.node_id) {
     	                send_node_done(done_id, neighbor.node_id);
@@ -709,7 +712,7 @@ public class Kernel {
                         for (int i = 0; i < bbuf.limit(); i++) {
                             bstring += bbuf.get(i) + " ";
                         }
-                        logger.info("FileListener sent the following through the pipe: " + bstring);
+                        // logger.info("FileListener sent the following through the pipe: " + bstring);
                         out.write(bbuf);
                     } catch (IOException e) {
                         e.printStackTrace();
@@ -838,7 +841,7 @@ public class Kernel {
         Instant t1 = Instant.now();
 		kernel.mainLoop();
 		Instant t2 = Instant.now();
-		System.out.format("Time network active: %.3f seconds", Duration.between(t1, t2).toMillis() / 1000.0);
+		System.out.println("Time network active: " + Duration.between(t1, t2).getSeconds() + " seconds");
 		
 		fl.interrupt();
 		fl.join();

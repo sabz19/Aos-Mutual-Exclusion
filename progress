@@ -24,6 +24,8 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
 (
 	read i
 	nodes=$(echo $i | cut -f1 -d" ")
+	ird=$(echo $i | cut -f2 -d" ")
+	cset=$(echo $i | cut -f3 -d" ")
 	mesgs=$(echo $i | cut -f4 -d" ")
     total=$(($nodes * $mesgs))
     
@@ -50,5 +52,24 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
     done
     
     rm $TEMP
+    
+    sleep 4
+    timestamps=$(./outerr | grep Granting | uniq | wc | sed 's/^[\t ]*//g' | cut -d" " -f1)
+    if [ $timestamps -eq $total ]; then
+        echo Checks passed.
+        echo Number of nodes: $nodes
+        echo Requests per node: $mesgs
+        echo Mean inter-request delay '('milliseconds')': $ird
+        echo Mean critical section time '('milliseconds')': $cset
+        echo Requests satisfied: $timestamps
+        exectime=$(./kernouterr | grep active | head -1 | cut -d" " -f4)
+        echo Time network was active '('seconds')': $exectime
+        echo 'Throughput (requests per second):' $(($total / $exectime))
+        echo Messages sent: $(./kernouterr | grep Messages | cut -d" " -f3 | awk '{s+=$1} END {print s}')
+        totalresponsetime=$(./appouterr | grep Response | cut -d" " -f 3 | awk '{s+=$1} END {print s}')
+        echo Average response time '('milliseconds')': $(($totalresponsetime / $timestamps))
+    else
+        echo The number of timestamps '('$timestamps')' did not match the expected number '('$total')'.
+    fi
 
 )
