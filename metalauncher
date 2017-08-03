@@ -13,7 +13,6 @@ echo $1 > $PROJDIR/.netidtemp
 MCONFIGPATH=$PROJDIR/mconfig
 MCONFIG=$MCONFIGPATH/$(basename $2)
 OUTPUT=$3
-GREEDY=$4
 
 echo $(basename $2) > $PROJDIR/.mconfigtemp
 
@@ -22,23 +21,29 @@ echo $(basename $2) > $PROJDIR/.mconfigtemp
 #echo $config_file_name
 #extract lines from config file
 
-COUNT=$(grep . $MCONFIG| wc -l)
-i=0
+COLS=$(stty size | cut -f2 -d" ")
+
+COUNT=$(grep . $MCONFIG | wc -l)
+i=1
 while IFS='' read -r line || [[ -n "$line" ]];
 do
-    if [ $i -ne 0 ]; then
-        echo
+    if [ -n "$line" ]; then
+        cfile=$(echo $line | cut -d" " -f1)
+        runs=$(echo $line | cut -d" " -f2)
+        greedy=$(echo $line | cut -d" " -f3)
+        
+        if [ -z "$greedy" ]; then
+            greedy=false
+        fi
+        
+        j=1
+        while [ $j -le $runs ]; do
+            echo Processing $cfile '('$i '/' $COUNT')' run $j of $runs '('greedy = $greedy')'
+            bash launcher $(cat .netidtemp) $cfile $greedy
+            bash progress $OUTPUT $COLS
+            j=$(($j+1))
+        done
+        
+        i=$(($i + 1))
     fi
-
-    echo Processing $line '('$i '/' $COUNT')'
-    ./launcher $(cat .netidtemp) $line $GREEDY
-    ./progress | tee .metalaunchertemp
-    
-    echo -n $line',' > $OUTPUT
-    
-    
-    rm -f .metalaunchertemp
-    
-    i=$(($i + 1))
-
-done < $(grep . $MCONFIG)
+done < $MCONFIG

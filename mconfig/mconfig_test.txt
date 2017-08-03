@@ -1,4 +1,4 @@
-config_simple.txt
-config_star5.txt
-
-config_linear20.txt
+#config file name, number of runs, greedy (optional, default false)
+config_simple.txt 2
+config_star5.txt 3 true
+config_linear20.txt 3

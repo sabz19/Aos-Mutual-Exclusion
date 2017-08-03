@@ -20,7 +20,11 @@ printed=0
 done=0
 total=0
 
-COLS=$(stty size | cut -f2 -d" ")
+if [ -n "$2" ]; then
+    COLS=$2
+else
+    COLS=$(stty size | cut -f2 -d" ")
+fi
 
 cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
 (
