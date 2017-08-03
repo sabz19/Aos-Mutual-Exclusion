@@ -1,0 +1,24 @@
+FILE=binary_base.txt
+n=6
+
+irdmax=200
+csetmax=200
+reqs=50
+
+i=1
+while [ $i -le $n ]; do
+    j=1
+    while [ $j -le $n ]; do
+        temp=$(($i * $irdmax))
+        ird=$(($temp / $n))
+        temp=$(($j * $csetmax))
+        cset=$(($temp / $n))
+        filename=config_binary31_${ird}_${cset}_${reqs}.txt
+        
+        echo 31 $ird $cset $reqs > $filename
+        cat binary_base.txt >> $filename
+        
+        j=$(($j + 1))
+    done
+    i=$(($i + 1))
+done
