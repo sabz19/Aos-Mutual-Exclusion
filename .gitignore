@@ -29,3 +29,4 @@ temp
 *.blg
 *.log
 *.gz
+*.out

@@ -80,4 +80,96 @@ Plot 6 represents a comparison of greedy and non-greedy algorithms for the two p
     \includegraphics[width=\textwidth]{figs/Plot6} \\
 \end{center}
 
+\section{Topological Comparisons}
+
+For the testing of the three parameters: mesaage complexity, response time and throughput, we anazlye based on three topology: linear tree, star tree and binary tree to see every parameters difference. For accuracy, we run each topology for 5times, and average it parameters. Relevant files for this section: test.csv, graph.R. \\
+
+\noindent
+Linear tree topology: \\
+Nodes: 20 \\
+Message Complexity: 3386.8\\
+Response Time: 207.6\\
+Throughput(Per Requests): 62.4\\
+
+\noindent
+Linear tree topology(Greedy): \\
+Nodes: 20 \\
+Message Complexity: 668.9\\
+Response Time: 41\\
+Throughput(Per Requests): 12.6\\
+
+\noindent
+Star tree topology: \\
+Nodes: 21 \\
+Message Complexity: 145.2\\
+Response Time: 730.2\\
+Throughput(Per Requests): 12.6\\
+
+\noindent
+Star tree topology(Greedy): \\
+Nodes: 21 \\
+Message Complexity: 146.8\\
+Response Time: 735\\
+Throughput(Per Requests): 11.8\\
+
+\noindent
+Binary tree topology: \\
+Nodes: 31\\
+Message Complexity: 1249.2\\
+Response Time: 524.8\\
+Throughput(Per Requests): 37.6\\
+
+\noindent
+Binary tree topology(Greedy): \\
+Nodes: 31\\
+Message Complexity: 1121.6\\
+Response Time: 531\\
+Throughput(Per Requests): 39.6\\
+
+\pagebreak
+Message Complexity(Per Node):
+
+\begin{center}
+    \includegraphics[width=.6\textwidth]{figs/s1} \\
+\end{center}
+
+Message Complexity Greedy(Per Node):
+
+\begin{center}
+    \includegraphics[width=.6\textwidth]{figs/s2} \\
+\end{center}
+
+For the analysis of message complexity, we take the message per nodes to make it easier to analyze.
+For the message complexity, we can see that the greedy’s one is far less than the non-greedy one, especially for the linear tree topology.\\
+
+Response Time:
+
+\begin{center}
+    \includegraphics[width=.6\textwidth]{figs/s3} \\
+\end{center}
+
+\pagebreak
+Response Time(Greedy)
+
+\begin{center}
+    \includegraphics[width=.6\textwidth]{figs/s4} \\
+\end{center}
+
+For the response time, even we implement the greedy method, the response time do not affect by it. \\
+
+\pagebreak
+Throughput:
+
+\begin{center}
+    \includegraphics[width=.6\textwidth]{figs/s5} \\
+\end{center}
+
+Throughput (Greedy):
+
+\begin{center}
+    \includegraphics[width=.6\textwidth]{figs/s6} \\
+\end{center}
+
+For the throughput per each requests, we can observe that the greedy method is workable on the linear topology and star topology, but not the binary.
+
 \end{document}
