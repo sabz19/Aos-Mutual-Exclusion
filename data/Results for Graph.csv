@@ -1,0 +1,5 @@
+Configuration,Messages,Greedy Messages,Diameter,Average Messages/Node,Average Messages/Node greedy,Number of nodes,Average Response Time,Average Response Time Greedy,Average Throughput,Average Throughput Greedy
+config_binary31,6805,5944,8,219,191,31,480.2,422.33,45.2,49.6
+config_binary15,2859,2671,6,190,178,15,220.2,219.8,45,47.6
+config_binary7,1076,1023,4,153,146,7,96.2,94.4,43,45.25
+config_binary3,284,278,2,112,92,3,35.33,35,40,40

@@ -24,3 +24,8 @@ logs
 .greedytemp
 .mconfigtemp
 temp
+*.aux
+*.bbl
+*.blg
+*.log
+*.gz
