@@ -38,6 +38,9 @@ do
         
         j=1
         while [ $j -le $runs ]; do
+            if [ $i -ne 1 ] && [ $j -ne 1 ]; then
+                echo
+            fi
             echo Processing $cfile '('$i '/' $COUNT')' run $j of $runs '('greedy = $greedy')'
             bash launcher $(cat .netidtemp) $cfile $greedy
             bash progress $OUTPUT $COLS

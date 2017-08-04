@@ -24,7 +24,7 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
 	do
 		host=$(echo $line | awk '{print $2}')
 
-		echo Checking $host for Java processes:
+		echo Checking $host for processes:
 
 		ssh -n $NETID@$host.$DOMAIN "ps -fu "'$USER'" | grep java | grep -v grep | grep -v bash"
 

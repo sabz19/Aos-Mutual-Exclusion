@@ -58,6 +58,21 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
     done
     
     rm $TEMP
+    
+    running=1
+    i=0
+    while [ $running -eq 1 ]; do
+        procs=$(./status | grep java)
+        if [ -z $procs ]; then
+            running=0
+        elif [ $i -eq 4 ]; then
+            echo 'After 12 seconds, nodes are still running. Exiting.'
+            exit 1
+        else
+            sleep 3
+            i=$(($i + 1))
+        fi
+    done
 
     if [ -n "$CSVFILE" ]; then
         touch $CSVFILE
@@ -66,7 +81,6 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
         fi
     fi
     
-    sleep 4
     timestamps=$(./outerr | grep Granting | uniq | wc | sed 's/^[\t ]*//g' | cut -d" " -f1)
     if [ $timestamps -eq $total ]; then
         echo Checks passed.
@@ -100,6 +114,7 @@ cat $CONFIG | sed -e "s/#.*//" | sed -e "/^\s*$/d" |
         
     else
         echo The number of timestamps '('$timestamps')' did not match the expected number '('$total')'.
+        exit 1
     fi
 
 )
